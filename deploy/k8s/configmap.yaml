@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cis-api-config
+  namespace: victory-cis
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  Database__InitializeOnStartup: "false"
+  Database__ApplyMigrationsOnStartup: "false"
+  OperationalReadiness__Environment: "Production"
+  OperationalReadiness__RtoMinutes: "60"
+  OperationalReadiness__RpoMinutes: "15"
+  OperationalReadiness__BackupDirectory: "/backups"
+  Storage__LocalPath: "/app/storage"
+  BackgroundJobs__Provider: "Quartz"
+  BackgroundJobs__DashboardEnabled: "true"
+  BackgroundJobs__DashboardAdminRole: "SystemAdmin"

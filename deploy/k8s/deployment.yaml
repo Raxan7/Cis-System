@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cis-api
+  namespace: victory-cis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cis-api
+  template:
+    metadata:
+      labels:
+        app: cis-api
+    spec:
+      containers:
+        - name: cis-api
+          image: victory-cis-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cis-api-config
+            - secretRef:
+                name: cis-api-secrets
+          volumeMounts:
+            - name: storage
+              mountPath: /app/storage
+            - name: backups
+              mountPath: /backups
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: cis-api-storage
+        - name: backups
+          persistentVolumeClaim:
+            claimName: cis-backups

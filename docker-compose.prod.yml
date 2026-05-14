@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cis-postgres-prodlike
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cis}
+      POSTGRES_USER: ${POSTGRES_USER:-cis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "${POSTGRES_HOST_PORT:-55433}:5432"
+    volumes:
+      - cis_postgres_prod_data:/var/lib/postgresql/data
+      - ./ops/backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cis} -d ${POSTGRES_DB:-cis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles: ["prod-like"]
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Cis.Api/Dockerfile
+    container_name: cis-api-prodlike
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__CisDb: Host=postgres;Port=5432;Database=${POSTGRES_DB:-cis};Username=${POSTGRES_USER:-cis};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required}
+      Identity__BootstrapAdmin__Email: ${BOOTSTRAP_ADMIN_EMAIL:?BOOTSTRAP_ADMIN_EMAIL is required}
+      Identity__BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD is required}
+      Database__InitializeOnStartup: "true"
+      Database__ApplyMigrationsOnStartup: "true"
+      OperationalReadiness__BackupDirectory: /backups
+      Storage__LocalPath: /app/storage
+      Integrations__LocalStoragePath: /app/storage
+    ports:
+      - "${API_HOST_PORT:-8081}:8080"
+    volumes:
+      - ./ops/backups:/backups
+      - cis_api_storage:/app/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    profiles: ["prod-like"]
+
+volumes:
+  cis_postgres_prod_data:
+  cis_api_storage:

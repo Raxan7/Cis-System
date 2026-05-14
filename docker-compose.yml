@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cis-postgres
+    environment:
+      POSTGRES_DB: cis
+      POSTGRES_USER: cis
+      POSTGRES_PASSWORD: cis_password
+    ports:
+      - "55432:5432"
+    volumes:
+      - cis_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cis -d cis"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Cis.Api/Dockerfile
+    container_name: cis-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__CisDb: Host=postgres;Port=5432;Database=cis;Username=cis;Password=cis_password
+      Database__InitializeOnStartup: "true"
+      Database__ApplyMigrationsOnStartup: "true"
+    ports:
+      - "8080:8080"
+
+volumes:
+  cis_postgres_data:

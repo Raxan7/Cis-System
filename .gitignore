@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+.vscode/
+TestResults/
+*.user
+*.suo
+*.cache
+*.log
+*.nupkg
+coverage/
+coverage.cobertura.xml
+.idea/
