@@ -16,7 +16,7 @@ steps:
           --platform managed \
           --allow-unauthenticated \
           --port 8080 \
-          --set-env-vars=ASPNETCORE_URLS=http://+:8080,ConnectionStrings__CisDb=${_NEON_CONN},Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Production,Jwt__SigningKey=${_JWT_SIGNING_KEY},Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
+          --set-env-vars=ASPNETCORE_URLS=http://+:8080,ConnectionStrings__CisDb=${_NEON_CONN},Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Development,Jwt__SigningKey=${_JWT_SIGNING_KEY},Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
 
 images:
   - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
