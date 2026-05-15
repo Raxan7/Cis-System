@@ -18,7 +18,7 @@ steps:
           --allow-unauthenticated \
           --port 8080 \
           --set-secrets=ConnectionStrings__CisDb=${_NEON_SECRET}:latest,Jwt__SigningKey=${_JWT_SECRET}:latest \
-          --set-env-vars=ASPNETCORE_URLS=http://+:8080,Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Development,Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
+          --set-env-vars=ASPNETCORE_URLS=http://+:8080,Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Development,Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE},Security__Cors__AllowedOrigins__0=${_FRONTEND_ORIGIN},Security__Cors__AllowedOrigins__1=http://localhost:3000,Security__Cors__AllowedOrigins__2=http://localhost:4200,Security__Cors__AllowedOrigins__3=http://localhost:5173,Security__Cors__AllowedOrigins__4=http://127.0.0.1:3000,Security__Cors__AllowedOrigins__5=http://127.0.0.1:4200,Security__Cors__AllowedOrigins__6=http://127.0.0.1:5173
 
 images:
   - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
@@ -30,6 +30,7 @@ substitutions:
   _JWT_SECRET: 'cis-jwt-signing-key'
   _JWT_ISSUER: 'Victory.CIS'
   _JWT_AUDIENCE: 'Victory.CIS.Api'
+  _FRONTEND_ORIGIN: 'https://cis-system.vercel.app'
   _BUILD_SA: 'projects/neovam/serviceAccounts/cloud-build-sa@neovam.iam.gserviceaccount.com'
   _RUN_SA: 'cis-run-sa@neovam.iam.gserviceaccount.com'
 
