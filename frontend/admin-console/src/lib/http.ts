@@ -17,7 +17,10 @@ type RequestOptions = {
   raw?: boolean;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  ?? (import.meta.env.DEV
+    ? 'http://localhost:8080'
+    : 'https://cis-api-n4ryz2zhlq-uc.a.run.app');
 let inMemorySession: StoredSession | null = loadSession();
 
 function serializeQuery(query?: RequestOptions['query']) {
