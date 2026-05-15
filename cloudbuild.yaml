@@ -14,9 +14,11 @@ steps:
           --image gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA \
           --region ${_REGION} \
           --platform managed \
+          --service-account ${_RUN_SA} \
           --allow-unauthenticated \
           --port 8080 \
-          --set-env-vars=ASPNETCORE_URLS=http://+:8080,ConnectionStrings__CisDb=${_NEON_CONN},Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Development,Jwt__SigningKey=${_JWT_SIGNING_KEY},Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
+          --set-secrets=ConnectionStrings__CisDb=${_NEON_SECRET}:latest,Jwt__SigningKey=${_JWT_SECRET}:latest \
+          --set-env-vars=ASPNETCORE_URLS=http://+:8080,Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Development,Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
 
 images:
   - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
@@ -24,11 +26,12 @@ images:
 substitutions:
   _SERVICE_NAME: 'cis-api'
   _REGION: 'us-central1'
-  _NEON_CONN: 'REPLACE_WITH_NEON_CONNECTION_STRING'
-  _JWT_SIGNING_KEY: 'REPLACE_WITH_SECURE_KEY'
+  _NEON_SECRET: 'neon-cis-connection-string'
+  _JWT_SECRET: 'cis-jwt-signing-key'
   _JWT_ISSUER: 'Victory.CIS'
   _JWT_AUDIENCE: 'Victory.CIS.Api'
   _BUILD_SA: 'projects/neovam/serviceAccounts/cloud-build-sa@neovam.iam.gserviceaccount.com'
+  _RUN_SA: 'cis-run-sa@neovam.iam.gserviceaccount.com'
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
