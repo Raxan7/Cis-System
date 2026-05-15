@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -57,9 +58,12 @@ public sealed class DistributionsController : ControllerBase
     [HttpGet("investor/{investorId:guid}")]
     [RequirePermission(Permissions.FeesTaxDistribution.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<InvestorDistributionDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorDistributionDto>>>> GetInvestorDistributions(Guid investorId, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorDistributionDto>>>> GetInvestorDistributions(
+        Guid investorId,
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken)
     {
         var distributions = await _feesTaxDistributionService.GetInvestorDistributionsAsync(investorId, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<InvestorDistributionDto>>.Success(distributions, HttpContext.TraceIdentifier));
+        return this.OkPaged(distributions, pagination);
     }
 }

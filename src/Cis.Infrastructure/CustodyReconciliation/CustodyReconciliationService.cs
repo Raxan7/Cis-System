@@ -7,8 +7,10 @@ using Cis.Contracts.CustodyReconciliation;
 using Cis.Domain.Audit;
 using Cis.Domain.Common;
 using Cis.Domain.CustodyReconciliation;
+using Cis.Infrastructure.Operations;
 using Cis.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Cis.Infrastructure.CustodyReconciliation;
 
@@ -24,17 +26,23 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
     private readonly IAuditWriter _auditWriter;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IBackgroundJobDispatcher _backgroundJobDispatcher;
+    private readonly PerformanceExecutionOptions _performanceExecutionOptions;
 
     public CustodyReconciliationService(
         CisDbContext dbContext,
         IAuditWriter auditWriter,
         ICurrentUserContext currentUserContext,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IBackgroundJobDispatcher backgroundJobDispatcher,
+        IOptions<PerformanceExecutionOptions> performanceExecutionOptions)
     {
         _dbContext = dbContext;
         _auditWriter = auditWriter;
         _currentUserContext = currentUserContext;
         _dateTimeProvider = dateTimeProvider;
+        _backgroundJobDispatcher = backgroundJobDispatcher;
+        _performanceExecutionOptions = performanceExecutionOptions.Value;
     }
 
     public async Task<CustodianDto> CreateCustodianAsync(CreateCustodianRequest request, CancellationToken cancellationToken = default)
@@ -73,6 +81,19 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
 
     public async Task<CustodianStatementImportDto> ImportHoldingsAsync(ImportCustodianHoldingsRequest request, string? idempotencyKey, CancellationToken cancellationToken = default)
     {
+        if (request.Lines.Count >= _performanceExecutionOptions.HeavyImportLineThreshold)
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"custody:holdings-import:{request.StatementDate:yyyyMMdd}:{request.CustodianId:N}",
+                workerCancellationToken => ImportHoldingsCoreAsync(request, idempotencyKey, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await ImportHoldingsCoreAsync(request, idempotencyKey, cancellationToken);
+    }
+
+    private async Task<CustodianStatementImportDto> ImportHoldingsCoreAsync(ImportCustodianHoldingsRequest request, string? idempotencyKey, CancellationToken cancellationToken)
+    {
         try
         {
             var key = RequiredIdempotencyKey(idempotencyKey);
@@ -92,18 +113,20 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
                 throw Validation("lines", "At least one holding line is required.");
             }
 
+            var validAccounts = await LoadValidCustodianAccountIdsAsync(request.CustodianId, request.Lines.Select(line => line.CustodianAccountId), cancellationToken);
+            var validSchemeIds = await LoadExistingSchemeIdsAsync(request.Lines.Select(line => line.SchemeId), cancellationToken);
+            var validSchemeClassIds = await LoadExistingSchemeClassIdsAsync(request.Lines.Where(line => line.SchemeClassId.HasValue).Select(line => line.SchemeClassId!.Value), cancellationToken);
             var importId = Guid.NewGuid();
             var lines = new List<CustodianHoldingLine>();
             foreach (var line in request.Lines)
             {
-                await EnsureSchemeReferencesAsync(line.SchemeId, line.SchemeClassId, cancellationToken);
-                await EnsureCustodianAccountAsync(request.CustodianId, line.CustodianAccountId, cancellationToken);
+                EnsureSchemeReferenceExists(validSchemeIds, validSchemeClassIds, line.SchemeId, line.SchemeClassId);
+                EnsureCustodianAccountExists(validAccounts, line.CustodianAccountId);
                 lines.Add(CustodianHoldingLine.Create(importId, request.CustodianId, line.CustodianAccountId ?? request.CustodianAccountId, line.SchemeId, line.SchemeClassId, line.InstrumentId, line.InstrumentCode, line.InstrumentName, line.Quantity, line.MarketValue, line.Currency, line.SettlementReference, line.IsSettled));
             }
 
             var import = CustodianStatementImport.CreateHoldings(request.CustodianId, request.CustodianAccountId, BusinessDate.From(request.StatementDate), request.SourceFileName, key, sourceHash, actor, now, lines);
-            _dbContext.CustodianStatementImports.Add(import);
-            await SaveHandlingValidationAsync(cancellationToken);
+            await SaveCustodianImportAsync(import, cancellationToken);
             var dto = MapImport(import);
             await WriteAuditAsync(AuditEventType.Created, "CustodianHoldingsImported", "CustodianStatementImport", import.Id.ToString(), null, Snapshot(dto), "Custodian holdings statement imported.", cancellationToken, key);
             return dto;
@@ -115,6 +138,19 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
     }
 
     public async Task<CustodianStatementImportDto> ImportCashAsync(ImportCustodianCashRequest request, string? idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        if (request.Lines.Count >= _performanceExecutionOptions.HeavyImportLineThreshold)
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"custody:cash-import:{request.StatementDate:yyyyMMdd}:{request.CustodianId:N}",
+                workerCancellationToken => ImportCashCoreAsync(request, idempotencyKey, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await ImportCashCoreAsync(request, idempotencyKey, cancellationToken);
+    }
+
+    private async Task<CustodianStatementImportDto> ImportCashCoreAsync(ImportCustodianCashRequest request, string? idempotencyKey, CancellationToken cancellationToken)
     {
         try
         {
@@ -135,18 +171,19 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
                 throw Validation("lines", "At least one cash line is required.");
             }
 
+            var validAccounts = await LoadValidCustodianAccountIdsAsync(request.CustodianId, request.Lines.Select(line => line.CustodianAccountId), cancellationToken);
+            var validSchemeIds = await LoadExistingSchemeIdsAsync(request.Lines.Select(line => line.SchemeId), cancellationToken);
             var importId = Guid.NewGuid();
             var lines = new List<CustodianCashLine>();
             foreach (var line in request.Lines)
             {
-                await EnsureSchemeReferencesAsync(line.SchemeId, null, cancellationToken);
-                await EnsureCustodianAccountAsync(request.CustodianId, line.CustodianAccountId, cancellationToken);
+                EnsureSchemeReferenceExists(validSchemeIds, null, line.SchemeId, null);
+                EnsureCustodianAccountExists(validAccounts, line.CustodianAccountId);
                 lines.Add(CustodianCashLine.Create(importId, request.CustodianId, line.CustodianAccountId ?? request.CustodianAccountId, line.SchemeId, line.AccountNumber, line.Currency, BusinessDate.From(line.BalanceDate), line.CashBalance, line.SettlementReference, line.IsSettled));
             }
 
             var import = CustodianStatementImport.CreateCash(request.CustodianId, request.CustodianAccountId, BusinessDate.From(request.StatementDate), request.SourceFileName, key, sourceHash, actor, now, lines);
-            _dbContext.CustodianStatementImports.Add(import);
-            await SaveHandlingValidationAsync(cancellationToken);
+            await SaveCustodianImportAsync(import, cancellationToken);
             var dto = MapImport(import);
             await WriteAuditAsync(AuditEventType.Created, "CustodianCashImported", "CustodianStatementImport", import.Id.ToString(), null, Snapshot(dto), "Custodian cash statement imported.", cancellationToken, key);
             return dto;
@@ -158,6 +195,19 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
     }
 
     public async Task<CustodyReconciliationRunDto> CreateReconciliationRunAsync(CreateCustodyReconciliationRunRequest request, CancellationToken cancellationToken = default)
+    {
+        if (ShouldRunReconciliationAsBackgroundJob(request))
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"custody:reconciliation:{request.CustodianId:N}:{request.BusinessDate:yyyyMMdd}",
+                workerCancellationToken => CreateReconciliationRunCoreAsync(request, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await CreateReconciliationRunCoreAsync(request, cancellationToken);
+    }
+
+    private async Task<CustodyReconciliationRunDto> CreateReconciliationRunCoreAsync(CreateCustodyReconciliationRunRequest request, CancellationToken cancellationToken)
     {
         try
         {
@@ -792,6 +842,96 @@ internal sealed class CustodyReconciliationService : ICustodyReconciliationServi
     private static ValidationException Validation(string field, string message)
     {
         return new ValidationException(new Dictionary<string, string[]> { [field] = [message] });
+    }
+
+    private bool ShouldRunReconciliationAsBackgroundJob(CreateCustodyReconciliationRunRequest request)
+    {
+        return request.InternalHoldings.Count + request.InternalCashBalances.Count >= _performanceExecutionOptions.HeavyReconciliationLineThreshold;
+    }
+
+    private async Task SaveCustodianImportAsync(CustodianStatementImport import, CancellationToken cancellationToken)
+    {
+        var autoDetectChangesEnabled = _dbContext.ChangeTracker.AutoDetectChangesEnabled;
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
+            _dbContext.CustodianStatementImports.Add(import);
+            await SaveHandlingValidationAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            _dbContext.ChangeTracker.AutoDetectChangesEnabled = autoDetectChangesEnabled;
+        }
+    }
+
+    private async Task<HashSet<Guid>> LoadExistingSchemeIdsAsync(IEnumerable<Guid> schemeIds, CancellationToken cancellationToken)
+    {
+        var distinctIds = schemeIds.Distinct().ToArray();
+        return (await _dbContext.Schemes
+            .AsNoTracking()
+            .Where(scheme => distinctIds.Contains(scheme.Id))
+            .Select(scheme => scheme.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+    }
+
+    private async Task<HashSet<Guid>> LoadExistingSchemeClassIdsAsync(IEnumerable<Guid> schemeClassIds, CancellationToken cancellationToken)
+    {
+        var distinctIds = schemeClassIds.Distinct().ToArray();
+        if (distinctIds.Length == 0)
+        {
+            return [];
+        }
+
+        return (await _dbContext.SchemeClasses
+            .AsNoTracking()
+            .Where(schemeClass => distinctIds.Contains(schemeClass.Id))
+            .Select(schemeClass => schemeClass.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+    }
+
+    private async Task<HashSet<Guid>> LoadValidCustodianAccountIdsAsync(Guid custodianId, IEnumerable<Guid?> requestedAccountIds, CancellationToken cancellationToken)
+    {
+        var distinctIds = requestedAccountIds
+            .Where(accountId => accountId.HasValue)
+            .Select(accountId => accountId!.Value)
+            .Distinct()
+            .ToArray();
+        if (distinctIds.Length == 0)
+        {
+            return [];
+        }
+
+        return (await _dbContext.CustodianAccounts
+            .AsNoTracking()
+            .Where(account => account.CustodianId == custodianId && distinctIds.Contains(account.Id))
+            .Select(account => account.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+    }
+
+    private static void EnsureSchemeReferenceExists(HashSet<Guid> validSchemeIds, HashSet<Guid>? validSchemeClassIds, Guid schemeId, Guid? schemeClassId)
+    {
+        if (!validSchemeIds.Contains(schemeId))
+        {
+            throw new NotFoundException("Scheme was not found.");
+        }
+
+        if (schemeClassId.HasValue && (validSchemeClassIds is null || !validSchemeClassIds.Contains(schemeClassId.Value)))
+        {
+            throw new NotFoundException("Scheme class was not found.");
+        }
+    }
+
+    private static void EnsureCustodianAccountExists(HashSet<Guid> validAccounts, Guid? accountId)
+    {
+        if (accountId.HasValue && !validAccounts.Contains(accountId.Value))
+        {
+            throw new NotFoundException("Custodian account was not found.");
+        }
     }
 
     private sealed record HoldingKey(Guid SchemeId, Guid? SchemeClassId, string InstrumentCode, string Currency)

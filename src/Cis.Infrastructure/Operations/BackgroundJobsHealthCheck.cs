@@ -1,27 +1,26 @@
-using Microsoft.Extensions.Configuration;
+using Cis.Application.Common.Interfaces;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Cis.Infrastructure.Operations;
 
 public sealed class BackgroundJobsHealthCheck : IHealthCheck
 {
-    private readonly IConfiguration _configuration;
+    private readonly IBackgroundJobDispatcher _backgroundJobDispatcher;
 
-    public BackgroundJobsHealthCheck(IConfiguration configuration)
+    public BackgroundJobsHealthCheck(IBackgroundJobDispatcher backgroundJobDispatcher)
     {
-        _configuration = configuration;
+        _backgroundJobDispatcher = backgroundJobDispatcher;
     }
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var provider = _configuration["BackgroundJobs:Provider"];
-        var dashboardEnabled = _configuration.GetValue("BackgroundJobs:DashboardEnabled", true);
-
-        if (string.IsNullOrWhiteSpace(provider))
+        var snapshot = _backgroundJobDispatcher.GetSnapshot();
+        if (snapshot.QueuedCount > 500)
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("Background job provider is not configured."));
+            return Task.FromResult(HealthCheckResult.Degraded($"Background job queue depth is elevated at {snapshot.QueuedCount}."));
         }
 
-        return Task.FromResult(HealthCheckResult.Healthy($"Background job provider '{provider}' configured; dashboard enabled={dashboardEnabled}."));
+        return Task.FromResult(HealthCheckResult.Healthy(
+            $"Background jobs healthy. queued={snapshot.QueuedCount}, active={snapshot.ActiveCount}, completed={snapshot.CompletedCount}, failed={snapshot.FailedCount}."));
     }
 }

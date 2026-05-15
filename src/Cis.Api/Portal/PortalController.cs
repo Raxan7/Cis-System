@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -28,42 +29,42 @@ public sealed class PortalController : ControllerBase
 
     [HttpGet("holdings")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalHoldingDto>>>> GetHoldings(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalHoldingDto>>>> GetHoldings([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var holdings = await _portalService.GetHoldingsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortalHoldingDto>>.Success(holdings, HttpContext.TraceIdentifier));
+        return this.OkPaged(holdings, pagination);
     }
 
     [HttpGet("transactions")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalTransactionDto>>>> GetTransactions(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalTransactionDto>>>> GetTransactions([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var transactions = await _portalService.GetTransactionsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortalTransactionDto>>.Success(transactions, HttpContext.TraceIdentifier));
+        return this.OkPaged(transactions, pagination);
     }
 
     [HttpGet("statements")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalStatementDto>>>> GetStatements(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalStatementDto>>>> GetStatements([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var statements = await _portalService.GetStatementsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortalStatementDto>>.Success(statements, HttpContext.TraceIdentifier));
+        return this.OkPaged(statements, pagination);
     }
 
     [HttpGet("tax-certificates")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalTaxCertificateDto>>>> GetTaxCertificates(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalTaxCertificateDto>>>> GetTaxCertificates([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var certificates = await _portalService.GetTaxCertificatesAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortalTaxCertificateDto>>.Success(certificates, HttpContext.TraceIdentifier));
+        return this.OkPaged(certificates, pagination);
     }
 
     [HttpGet("notices")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorNoticeDto>>>> GetNotices(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorNoticeDto>>>> GetNotices([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var notices = await _portalService.GetNoticesAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<InvestorNoticeDto>>.Success(notices, HttpContext.TraceIdentifier));
+        return this.OkPaged(notices, pagination);
     }
 
     [HttpPost("requests/subscription")]
@@ -108,9 +109,9 @@ public sealed class PortalController : ControllerBase
 
     [HttpGet("activity")]
     [RequirePermission(Permissions.Portal.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalActivityLogDto>>>> GetActivity(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortalActivityLogDto>>>> GetActivity([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var activity = await _portalService.GetActivityAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortalActivityLogDto>>.Success(activity, HttpContext.TraceIdentifier));
+        return this.OkPaged(activity, pagination);
     }
 }

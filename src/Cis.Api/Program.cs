@@ -4,6 +4,7 @@ using Cis.Api.Configuration;
 using Cis.Api.Middleware;
 using Cis.Api.Security;
 using Cis.Application;
+using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
 using Cis.Domain.Audit;
@@ -364,11 +365,18 @@ app.MapGet("/metrics", () =>
     .WithName("Metrics")
     .WithTags("Operations");
 
-app.MapGet("/jobs", (IConfiguration configuration, HttpContext httpContext) =>
+app.MapGet("/jobs", (IConfiguration configuration, IBackgroundJobDispatcher backgroundJobDispatcher, HttpContext httpContext) =>
     {
+        var snapshot = backgroundJobDispatcher.GetSnapshot();
         var response = ApiResponse<BackgroundJobsDashboardResponse>.Success(new BackgroundJobsDashboardResponse(
             configuration["BackgroundJobs:Provider"] ?? "Quartz",
             configuration.GetValue("BackgroundJobs:DashboardEnabled", true),
+            snapshot.QueuedCount,
+            snapshot.ActiveCount,
+            snapshot.CompletedCount,
+            snapshot.FailedCount,
+            snapshot.LastCompletedAtUtc,
+            snapshot.LastFailedAtUtc,
             DateTime.UtcNow), httpContext.TraceIdentifier);
         return Results.Text(JsonConvert.SerializeObject(response), "application/json");
     })
@@ -389,6 +397,15 @@ static string GetRateLimitPartitionKey(HttpContext httpContext)
 
 public sealed record SystemStatusResponse(string Service, string Version, DateTime TimestampUtc);
 
-public sealed record BackgroundJobsDashboardResponse(string Provider, bool DashboardEnabled, DateTime RetrievedAtUtc);
+public sealed record BackgroundJobsDashboardResponse(
+    string Provider,
+    bool DashboardEnabled,
+    int QueuedCount,
+    int ActiveCount,
+    long CompletedCount,
+    long FailedCount,
+    DateTime? LastCompletedAtUtc,
+    DateTime? LastFailedAtUtc,
+    DateTime RetrievedAtUtc);
 
 public partial class Program;

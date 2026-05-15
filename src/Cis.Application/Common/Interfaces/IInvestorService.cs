@@ -1,3 +1,4 @@
+using Cis.Contracts;
 using Cis.Contracts.Investors;
 
 namespace Cis.Application.Common.Interfaces;
@@ -6,7 +7,7 @@ public interface IInvestorService
 {
     Task<InvestorDto> CreateAsync(CreateInvestorRequest request, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<InvestorDto>> GetAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<InvestorDto>> GetAsync(PaginationRequest pagination, CancellationToken cancellationToken = default);
 
     Task<InvestorDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

@@ -31,6 +31,8 @@ internal sealed class SchemeConfiguration : IEntityTypeConfiguration<Scheme>
 
         builder.HasIndex(scheme => scheme.Code).IsUnique();
         builder.HasIndex(scheme => scheme.Status);
+        builder.HasIndex(scheme => new { scheme.Status, scheme.Code });
+        builder.HasIndex(scheme => scheme.Name);
         builder.HasIndex(scheme => scheme.BaseCurrency);
 
         builder.Metadata.FindNavigation(nameof(Scheme.Classes))?.SetPropertyAccessMode(PropertyAccessMode.Field);

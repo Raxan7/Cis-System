@@ -36,6 +36,8 @@ internal sealed class DealingInstructionConfiguration : IEntityTypeConfiguration
 
         builder.HasIndex(instruction => instruction.InstructionNumber).IsUnique();
         builder.HasIndex(instruction => instruction.Status);
+        builder.HasIndex(instruction => new { instruction.Status, instruction.BusinessDate });
+        builder.HasIndex(instruction => new { instruction.Channel, instruction.BusinessDate });
         builder.HasIndex(instruction => new { instruction.InvestorId, instruction.SchemeId, instruction.SchemeClassId });
         builder.HasIndex(instruction => instruction.BusinessDate);
 

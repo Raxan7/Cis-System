@@ -8,8 +8,10 @@ using Cis.Domain.Audit;
 using Cis.Domain.Common;
 using Cis.Domain.NAV;
 using Cis.Domain.Schemes;
+using Cis.Infrastructure.Operations;
 using Cis.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Cis.Infrastructure.NAV;
 
@@ -20,20 +22,39 @@ internal sealed class NavService : INavService
     private readonly IAuditWriter _auditWriter;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IBackgroundJobDispatcher _backgroundJobDispatcher;
+    private readonly PerformanceExecutionOptions _performanceExecutionOptions;
 
     public NavService(
         CisDbContext dbContext,
         IAuditWriter auditWriter,
         ICurrentUserContext currentUserContext,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IBackgroundJobDispatcher backgroundJobDispatcher,
+        IOptions<PerformanceExecutionOptions> performanceExecutionOptions)
     {
         _dbContext = dbContext;
         _auditWriter = auditWriter;
         _currentUserContext = currentUserContext;
         _dateTimeProvider = dateTimeProvider;
+        _backgroundJobDispatcher = backgroundJobDispatcher;
+        _performanceExecutionOptions = performanceExecutionOptions.Value;
     }
 
     public async Task<ValuationRunDto> CreateValuationRunAsync(CreateValuationRunRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.Instruments.Count >= _performanceExecutionOptions.HeavyNavInstrumentThreshold)
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"nav:create:{request.SchemeId:N}:{request.SchemeClassId:N}:{request.ValuationDate:yyyyMMdd}",
+                workerCancellationToken => CreateValuationRunCoreAsync(request, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await CreateValuationRunCoreAsync(request, cancellationToken);
+    }
+
+    private async Task<ValuationRunDto> CreateValuationRunCoreAsync(CreateValuationRunRequest request, CancellationToken cancellationToken)
     {
         var actor = CurrentUserIdOrThrow();
         var now = _dateTimeProvider.UtcNow;
@@ -65,10 +86,12 @@ internal sealed class NavService : INavService
 
         var approvedOverrides = await GetApprovedOverridesAsync(request, cancellationToken);
         var appliedOverrideIds = new List<Guid>();
+        var instrumentTypes = request.Instruments.Select(instrument => instrument.InstrumentType.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existingHierarchies = await LoadExistingPriceSourceHierarchiesAsync(request.SchemeId, request.SchemeClassId, instrumentTypes, cancellationToken);
 
         foreach (var instrument in request.Instruments)
         {
-            await EnsurePriceSourceHierarchyAsync(request, instrument.InstrumentType, actor, now, cancellationToken);
+            EnsurePriceSourceHierarchy(request, instrument.InstrumentType, actor, now, existingHierarchies);
             var valuation = BuildInstrumentValuation(run, instrument, approvedOverrides, out var stalePriceException, out var varianceException, out var appliedOverrideId);
             run.AddInstrumentValuation(valuation);
             run.AddInput(ValuationInput.Create(run.Id, ValuationInputType.InvestmentValue, $"Investment value for {instrument.InstrumentId}", valuation.InvestmentValue, valuation.Quantity, valuation.MarketPrice, "D-FML-002", instrument.PriceSource));
@@ -113,6 +136,22 @@ internal sealed class NavService : INavService
     }
 
     public async Task<ValuationRunDto> CalculateValuationRunAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var instrumentCount = await _dbContext.InstrumentValuations
+            .AsNoTracking()
+            .CountAsync(valuation => valuation.ValuationRunId == id, cancellationToken);
+        if (instrumentCount >= _performanceExecutionOptions.HeavyNavInstrumentThreshold)
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"nav:calculate:{id:N}",
+                workerCancellationToken => CalculateValuationRunCoreAsync(id, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await CalculateValuationRunCoreAsync(id, cancellationToken);
+    }
+
+    private async Task<ValuationRunDto> CalculateValuationRunCoreAsync(Guid id, CancellationToken cancellationToken)
     {
         var actor = CurrentUserIdOrThrow();
         var now = _dateTimeProvider.UtcNow;
@@ -395,14 +434,22 @@ internal sealed class NavService : INavService
         {
             query = query.Where(publication => publication.SchemeClassId == schemeClassId.Value);
         }
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value;
+            query = query.Where(publication => publication.ValuationDate.Value >= from);
+        }
 
-        var publications = await query.ToListAsync(cancellationToken);
-        publications = publications
-            .Where(publication => !fromDate.HasValue || publication.ValuationDate.Value >= fromDate.Value)
-            .Where(publication => !toDate.HasValue || publication.ValuationDate.Value <= toDate.Value)
-            .OrderByDescending(publication => publication.ValuationDate.Value)
+        if (toDate.HasValue)
+        {
+            var to = toDate.Value;
+            query = query.Where(publication => publication.ValuationDate.Value <= to);
+        }
+
+        var publications = await query
+            .OrderByDescending(publication => publication.ValuationDate)
             .ThenByDescending(publication => publication.VersionNumber)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         return publications.Select(MapPublication).ToList();
     }
@@ -667,31 +714,14 @@ internal sealed class NavService : INavService
             .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.ApprovedAtUtc).First());
     }
 
-    private async Task EnsurePriceSourceHierarchyAsync(
+    private void EnsurePriceSourceHierarchy(
         CreateValuationRunRequest request,
         string instrumentType,
         string actor,
         DateTime now,
-        CancellationToken cancellationToken)
+        ISet<string> existingHierarchies)
     {
-        var pendingExists = _dbContext.PriceSourceHierarchies.Local.Any(item => item.SchemeId == request.SchemeId
-            && item.SchemeClassId == request.SchemeClassId
-            && string.Equals(item.InstrumentType, instrumentType, StringComparison.OrdinalIgnoreCase)
-            && item.IsActive);
-        if (pendingExists)
-        {
-            return;
-        }
-
-        var exists = await _dbContext.PriceSourceHierarchies
-            .AsNoTracking()
-            .AnyAsync(item => item.SchemeId == request.SchemeId
-                && item.SchemeClassId == request.SchemeClassId
-                && item.InstrumentType == instrumentType
-                && item.IsActive,
-                cancellationToken);
-
-        if (exists)
+        if (existingHierarchies.Contains(instrumentType))
         {
             return;
         }
@@ -707,6 +737,7 @@ internal sealed class NavService : INavService
             request.PriceVarianceTolerancePercent,
             actor,
             now));
+        existingHierarchies.Add(instrumentType);
     }
 
     private async Task EnsureSchemeClassActiveAsync(Guid schemeId, Guid schemeClassId, CancellationToken cancellationToken)
@@ -1063,5 +1094,22 @@ internal sealed class NavService : INavService
             restatement.CorrectedVersionNumber,
             restatement.Reason,
             restatement.Status.ToString());
+    }
+
+    private async Task<HashSet<string>> LoadExistingPriceSourceHierarchiesAsync(
+        Guid schemeId,
+        Guid schemeClassId,
+        IReadOnlyCollection<string> instrumentTypes,
+        CancellationToken cancellationToken)
+    {
+        return (await _dbContext.PriceSourceHierarchies
+            .AsNoTracking()
+            .Where(item => item.SchemeId == schemeId
+                && item.SchemeClassId == schemeClassId
+                && item.IsActive
+                && instrumentTypes.Contains(item.InstrumentType))
+            .Select(item => item.InstrumentType)
+            .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

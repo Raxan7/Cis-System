@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -20,10 +21,10 @@ public sealed class ReportsController : ControllerBase
 
     [HttpGet("definitions")]
     [RequirePermission(Permissions.Reports.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ReportDefinitionDto>>>> GetDefinitions(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ReportDefinitionDto>>>> GetDefinitions([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var definitions = await _reportService.GetDefinitionsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<ReportDefinitionDto>>.Success(definitions, HttpContext.TraceIdentifier));
+        var definitions = await _reportService.GetDefinitionsAsync(pagination, cancellationToken);
+        return this.OkPaged(definitions);
     }
 
     [HttpPost("schedules")]
@@ -76,10 +77,10 @@ public sealed class ReportsController : ControllerBase
 
     [HttpGet("runs")]
     [RequirePermission(Permissions.Reports.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ReportRunDto>>>> GetRuns(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ReportRunDto>>>> GetRuns([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var runs = await _reportService.GetRunsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<ReportRunDto>>.Success(runs, HttpContext.TraceIdentifier));
+        var runs = await _reportService.GetRunsAsync(pagination, cancellationToken);
+        return this.OkPaged(runs);
     }
 
     [HttpGet("runs/{id:guid}/download")]

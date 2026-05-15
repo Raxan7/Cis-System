@@ -1,3 +1,4 @@
+using Cis.Contracts;
 using Cis.Contracts.Identity;
 
 namespace Cis.Application.Common.Interfaces;
@@ -12,7 +13,7 @@ public interface IIdentityService
 
     Task<UserDto> CreateUserAsync(CreateUserRequest request, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<UserDto>> GetUsersAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<UserDto>> GetUsersAsync(PaginationRequest pagination, CancellationToken cancellationToken = default);
 
     Task<UserDto> GetUserByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

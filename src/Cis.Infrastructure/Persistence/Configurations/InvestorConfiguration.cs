@@ -32,7 +32,9 @@ internal sealed class InvestorConfiguration : IEntityTypeConfiguration<Investor>
 
         builder.HasIndex(investor => investor.InvestorNumber).IsUnique();
         builder.HasIndex(investor => investor.Status);
+        builder.HasIndex(investor => new { investor.Status, investor.InvestorNumber });
         builder.HasIndex(investor => investor.InvestorType);
+        builder.HasIndex(investor => investor.DisplayName);
         builder.HasIndex(investor => investor.Email);
         builder.HasIndex(investor => investor.PhoneNumber);
 

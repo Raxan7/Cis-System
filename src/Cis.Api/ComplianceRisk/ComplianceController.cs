@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -30,10 +31,10 @@ public sealed class ComplianceController : ControllerBase
     [HttpGet("breaches")]
     [RequirePermission(Permissions.ComplianceRisk.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<LimitBreachDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<LimitBreachDto>>>> GetBreaches([FromQuery] string? status, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<LimitBreachDto>>>> GetBreaches([FromQuery] string? status, [FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var breaches = await _complianceRiskService.GetBreachesAsync(status, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<LimitBreachDto>>.Success(breaches, HttpContext.TraceIdentifier));
+        return this.OkPaged(breaches, pagination);
     }
 
     [HttpPost("breaches/{id:guid}/assign")]

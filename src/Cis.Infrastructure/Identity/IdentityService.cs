@@ -1,6 +1,7 @@
 using Cis.Application.Common.Exceptions;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
+using Cis.Contracts;
 using Cis.Contracts.Identity;
 using Cis.Domain.Identity;
 using Cis.Infrastructure.Persistence;
@@ -157,26 +158,88 @@ internal sealed class IdentityService : IIdentityService
         return await MapUserAsync(user.Id, cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<UserDto>> GetUsersAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<UserDto>> GetUsersAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        var userIds = await _dbContext.Users
-            .AsNoTracking()
-            .OrderBy(user => user.Email)
-            .Select(user => user.Id)
+        var query = ApplyUserListQuery(_dbContext.Users.AsNoTracking(), pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var usersPage = await ApplyUserListSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
+            .Select(user => new
+            {
+                user.Id,
+                user.Email,
+                user.DisplayName,
+                Status = user.Status.ToString(),
+                user.MfaEnabled,
+                user.PasswordResetRequired,
+                user.LastLoginAtUtc,
+                user.Audit.CreatedAtUtc
+            })
             .ToListAsync(cancellationToken);
 
-        var users = new List<UserDto>();
-        foreach (var userId in userIds)
-        {
-            users.Add(await MapUserAsync(userId, cancellationToken));
-        }
+        var userIds = usersPage.Select(user => user.Id).ToArray();
+        var roleGroups = await _dbContext.UserRoles
+            .AsNoTracking()
+            .Where(userRole => userIds.Contains(userRole.UserId))
+            .Select(userRole => new
+            {
+                userRole.UserId,
+                RoleName = userRole.Role!.Name
+            })
+            .ToListAsync(cancellationToken);
 
-        return users;
+        var rolesByUserId = roleGroups
+            .GroupBy(item => item.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyCollection<string>)group.Select(item => item.RoleName).OrderBy(roleName => roleName).ToArray());
+
+        var users = usersPage
+            .Select(user => new UserDto(
+                user.Id,
+                user.Email,
+                user.DisplayName,
+                user.Status,
+                user.MfaEnabled,
+                user.PasswordResetRequired,
+                user.LastLoginAtUtc,
+                user.CreatedAtUtc,
+                rolesByUserId.TryGetValue(user.Id, out var roles) ? roles : []))
+            .ToArray();
+
+        return new PagedResult<UserDto>(users, totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
     public Task<UserDto> GetUserByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return MapUserAsync(id, cancellationToken);
+    }
+
+    private static IQueryable<User> ApplyUserListQuery(IQueryable<User> query, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return query;
+        }
+
+        var search = pagination.Search.Trim();
+        return query.Where(user =>
+            user.Email.Contains(search) ||
+            user.DisplayName.Contains(search));
+    }
+
+    private static IQueryable<User> ApplyUserListSorting(IQueryable<User> query, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "DISPLAYNAME" => descending ? query.OrderByDescending(user => user.DisplayName).ThenBy(user => user.Email) : query.OrderBy(user => user.DisplayName).ThenBy(user => user.Email),
+            "STATUS" => descending ? query.OrderByDescending(user => user.Status).ThenBy(user => user.Email) : query.OrderBy(user => user.Status).ThenBy(user => user.Email),
+            "LASTLOGINATUTC" => descending ? query.OrderByDescending(user => user.LastLoginAtUtc).ThenBy(user => user.Email) : query.OrderBy(user => user.LastLoginAtUtc).ThenBy(user => user.Email),
+            "CREATEDATUTC" => descending ? query.OrderByDescending(user => user.Audit.CreatedAtUtc).ThenBy(user => user.Email) : query.OrderBy(user => user.Audit.CreatedAtUtc).ThenBy(user => user.Email),
+            _ => descending ? query.OrderByDescending(user => user.Email).ThenBy(user => user.DisplayName) : query.OrderBy(user => user.Email).ThenBy(user => user.DisplayName)
+        };
     }
 
     public Task<AccessChangeRequestDto> RequestRoleAssignmentAsync(Guid userId, AssignRolesRequest request, CancellationToken cancellationToken = default)

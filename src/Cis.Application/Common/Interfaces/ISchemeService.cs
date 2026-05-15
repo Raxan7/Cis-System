@@ -1,3 +1,4 @@
+using Cis.Contracts;
 using Cis.Contracts.Schemes;
 
 namespace Cis.Application.Common.Interfaces;
@@ -6,7 +7,7 @@ public interface ISchemeService
 {
     Task<SchemeDto> CreateAsync(CreateSchemeRequest request, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<SchemeDto>> GetAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<SchemeDto>> GetAsync(PaginationRequest pagination, CancellationToken cancellationToken = default);
 
     Task<SchemeDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

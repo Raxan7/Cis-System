@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -21,10 +22,12 @@ public sealed class WorkflowsController : ControllerBase
     [HttpGet("pending")]
     [RequirePermission(Permissions.Workflow.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<WorkflowDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<WorkflowDto>>>> GetPending(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<WorkflowDto>>>> GetPending(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken)
     {
         var workflows = await _workflowService.GetPendingAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<WorkflowDto>>.Success(workflows, HttpContext.TraceIdentifier));
+        return this.OkPaged(workflows, pagination);
     }
 
     [HttpPost("{id:guid}/submit")]

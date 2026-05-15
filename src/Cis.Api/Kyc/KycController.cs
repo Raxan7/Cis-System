@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -21,18 +22,18 @@ public sealed class KycController : ControllerBase
     [HttpGet("expired-documents")]
     [RequirePermission(Permissions.Investors.KycRead)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<KycDocumentDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<KycDocumentDto>>>> GetExpiredDocuments(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<KycDocumentDto>>>> GetExpiredDocuments([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var documents = await _kycQueryService.GetExpiredDocumentsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<KycDocumentDto>>.Success(documents, HttpContext.TraceIdentifier));
+        return this.OkPaged(documents, pagination);
     }
 
     [HttpGet("incomplete")]
     [RequirePermission(Permissions.Investors.KycRead)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<IncompleteKycInvestorDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IncompleteKycInvestorDto>>>> GetIncomplete(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IncompleteKycInvestorDto>>>> GetIncomplete([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var investors = await _kycQueryService.GetIncompleteInvestorsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<IncompleteKycInvestorDto>>.Success(investors, HttpContext.TraceIdentifier));
+        return this.OkPaged(investors, pagination);
     }
 }

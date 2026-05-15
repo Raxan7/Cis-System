@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -57,10 +58,10 @@ public sealed class CustodyController : ControllerBase
     [HttpGet("reconciliation-breaks")]
     [RequirePermission(Permissions.CustodyReconciliation.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<CustodyReconciliationBreakDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<CustodyReconciliationBreakDto>>>> GetBreaks([FromQuery] string? status, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<CustodyReconciliationBreakDto>>>> GetBreaks([FromQuery] string? status, [FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var breaks = await _custodyReconciliationService.GetBreaksAsync(status, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<CustodyReconciliationBreakDto>>.Success(breaks, HttpContext.TraceIdentifier));
+        return this.OkPaged(breaks, pagination);
     }
 
     [HttpPost("reconciliation-breaks/{id:guid}/assign")]

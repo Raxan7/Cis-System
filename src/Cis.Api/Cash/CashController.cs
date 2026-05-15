@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -62,10 +63,10 @@ public sealed class CashController : ControllerBase
     [HttpGet("suspense")]
     [RequirePermission(Permissions.Cash.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<SuspenseItemDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<SuspenseItemDto>>>> GetSuspense(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<SuspenseItemDto>>>> GetSuspense([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var suspense = await _cashService.GetSuspenseAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<SuspenseItemDto>>.Success(suspense, HttpContext.TraceIdentifier));
+        return this.OkPaged(suspense, pagination);
     }
 
     [HttpPost("suspense/{id:guid}/resolve")]

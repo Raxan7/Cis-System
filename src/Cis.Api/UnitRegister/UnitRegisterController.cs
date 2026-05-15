@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -30,19 +31,26 @@ public sealed class UnitRegisterController : ControllerBase
     [HttpGet("investors/{investorId:guid}/holdings")]
     [RequirePermission(Permissions.UnitRegister.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<UnitHoldingDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<UnitHoldingDto>>>> GetInvestorHoldings(Guid investorId, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<UnitHoldingDto>>>> GetInvestorHoldings(
+        Guid investorId,
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken)
     {
         var holdings = await _unitRegisterService.GetInvestorHoldingsAsync(investorId, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<UnitHoldingDto>>.Success(holdings, HttpContext.TraceIdentifier));
+        return this.OkPaged(holdings, pagination);
     }
 
     [HttpGet("investors/{investorId:guid}/historical")]
     [RequirePermission(Permissions.UnitRegister.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<HistoricalHoldingDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<HistoricalHoldingDto>>>> GetInvestorHistoricalHoldings(Guid investorId, [FromQuery] DateOnly date, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<HistoricalHoldingDto>>>> GetInvestorHistoricalHoldings(
+        Guid investorId,
+        [FromQuery] DateOnly date,
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken)
     {
         var holdings = await _unitRegisterService.GetInvestorHistoricalHoldingsAsync(investorId, date, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<HistoricalHoldingDto>>.Success(holdings, HttpContext.TraceIdentifier));
+        return this.OkPaged(holdings, pagination);
     }
 
     [HttpPost("adjustments")]

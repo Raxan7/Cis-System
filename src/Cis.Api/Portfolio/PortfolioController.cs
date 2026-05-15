@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -93,10 +94,11 @@ public sealed class PortfolioController : ControllerBase
     public async Task<ActionResult<ApiResponse<IReadOnlyCollection<PortfolioHoldingDto>>>> GetHoldings(
         [FromQuery] Guid schemeId,
         [FromQuery] Guid schemeClassId,
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken)
     {
         var holdings = await _portfolioService.GetHoldingsAsync(schemeId, schemeClassId, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<PortfolioHoldingDto>>.Success(holdings, HttpContext.TraceIdentifier));
+        return this.OkPaged(holdings, pagination);
     }
 
     [HttpGet("maturity-ladder")]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cis.Application.Common.Exceptions;
 using Cis.Application.Common.Interfaces;
+using Cis.Contracts;
 using Cis.Contracts.Investors;
 using Cis.Domain.Audit;
 using Cis.Domain.Common;
@@ -90,11 +91,13 @@ internal sealed class InvestorService : IInvestorService, IKycQueryService, IAml
         return dto;
     }
 
-    public async Task<IReadOnlyCollection<InvestorDto>> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<InvestorDto>> GetAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        var ids = await _dbContext.Investors
-            .AsNoTracking()
-            .OrderBy(investor => investor.InvestorNumber)
+        var query = ApplyInvestorListQuery(_dbContext.Investors.AsNoTracking(), pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var ids = await ApplyInvestorListSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
             .Select(investor => investor.Id)
             .ToListAsync(cancellationToken);
 
@@ -104,12 +107,40 @@ internal sealed class InvestorService : IInvestorService, IKycQueryService, IAml
             investors.Add(await MapInvestorAsync(id, cancellationToken));
         }
 
-        return investors;
+        return new PagedResult<InvestorDto>(investors, totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
     public Task<InvestorDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return MapInvestorAsync(id, cancellationToken);
+    }
+
+    private static IQueryable<Investor> ApplyInvestorListQuery(IQueryable<Investor> query, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return query;
+        }
+
+        var search = pagination.Search.Trim();
+        return query.Where(investor =>
+            investor.InvestorNumber.Contains(search) ||
+            investor.DisplayName.Contains(search) ||
+            investor.Email.Contains(search) ||
+            investor.PhoneNumber.Contains(search));
+    }
+
+    private static IQueryable<Investor> ApplyInvestorListSorting(IQueryable<Investor> query, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "DISPLAYNAME" => descending ? query.OrderByDescending(investor => investor.DisplayName).ThenBy(investor => investor.InvestorNumber) : query.OrderBy(investor => investor.DisplayName).ThenBy(investor => investor.InvestorNumber),
+            "EMAIL" => descending ? query.OrderByDescending(investor => investor.Email).ThenBy(investor => investor.InvestorNumber) : query.OrderBy(investor => investor.Email).ThenBy(investor => investor.InvestorNumber),
+            "STATUS" => descending ? query.OrderByDescending(investor => investor.Status).ThenBy(investor => investor.InvestorNumber) : query.OrderBy(investor => investor.Status).ThenBy(investor => investor.InvestorNumber),
+            "CREATEDATUTC" => descending ? query.OrderByDescending(investor => investor.Audit.CreatedAtUtc).ThenBy(investor => investor.InvestorNumber) : query.OrderBy(investor => investor.Audit.CreatedAtUtc).ThenBy(investor => investor.InvestorNumber),
+            _ => descending ? query.OrderByDescending(investor => investor.InvestorNumber) : query.OrderBy(investor => investor.InvestorNumber)
+        };
     }
 
     public Task<InvestorDto> UpdateAsync(Guid id, UpdateInvestorRequest request, CancellationToken cancellationToken = default)

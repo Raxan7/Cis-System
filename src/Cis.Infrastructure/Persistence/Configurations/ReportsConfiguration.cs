@@ -78,6 +78,7 @@ internal sealed class ReportRunConfiguration : IEntityTypeConfiguration<ReportRu
         builder.Metadata.FindNavigation(nameof(ReportRun.Distributions))?.SetPropertyAccessMode(PropertyAccessMode.Field);
         builder.HasIndex(run => new { run.ReportCode, run.BusinessDate, run.VersionNumber });
         builder.HasIndex(run => new { run.Status, run.GeneratedAtUtc });
+        builder.HasIndex(run => new { run.ReportDefinitionId, run.Status, run.GeneratedAtUtc });
         StatutoryLimitConfiguration.Audit(builder);
     }
 }

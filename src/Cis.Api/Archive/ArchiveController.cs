@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -21,10 +22,12 @@ public sealed class ArchiveController : ControllerBase
     [HttpGet]
     [RequirePermission(Permissions.Archive.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<ArchiveRecordDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ArchiveRecordDto>>>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ArchiveRecordDto>>>> Get(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken)
     {
         var records = await _archiveService.GetAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<ArchiveRecordDto>>.Success(records, HttpContext.TraceIdentifier));
+        return this.OkPaged(records, pagination);
     }
 
     [HttpGet("{id:guid}")]

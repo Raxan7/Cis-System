@@ -76,7 +76,10 @@ internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Ignore(auditLog => auditLog.TimestampUtc);
 
         builder.HasIndex(auditLog => new { auditLog.Module, auditLog.OccurredAtUtc });
+        builder.HasIndex(auditLog => new { auditLog.Module, auditLog.EventType, auditLog.OccurredAtUtc });
         builder.HasIndex(auditLog => new { auditLog.EntityName, auditLog.EntityId });
+        builder.HasIndex(auditLog => new { auditLog.EntityName, auditLog.OccurredAtUtc });
+        builder.HasIndex(auditLog => new { auditLog.ActorId, auditLog.OccurredAtUtc });
         builder.HasIndex(auditLog => auditLog.CorrelationId);
         builder.HasIndex(auditLog => auditLog.EventType);
         builder.HasIndex(auditLog => auditLog.WorkflowId);

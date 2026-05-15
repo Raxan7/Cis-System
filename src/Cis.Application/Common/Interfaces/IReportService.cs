@@ -1,10 +1,11 @@
+using Cis.Contracts;
 using Cis.Contracts.Reports;
 
 namespace Cis.Application.Common.Interfaces;
 
 public interface IReportService
 {
-    Task<IReadOnlyCollection<ReportDefinitionDto>> GetDefinitionsAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<ReportDefinitionDto>> GetDefinitionsAsync(PaginationRequest pagination, CancellationToken cancellationToken = default);
 
     Task<ReportScheduleDto> CreateScheduleAsync(CreateReportScheduleRequest request, CancellationToken cancellationToken = default);
 
@@ -18,7 +19,7 @@ public interface IReportService
 
     Task<ReportRunDto> PublishRunAsync(Guid id, ReportActionRequest request, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<ReportRunDto>> GetRunsAsync(CancellationToken cancellationToken = default);
+    Task<PagedResult<ReportRunDto>> GetRunsAsync(PaginationRequest pagination, CancellationToken cancellationToken = default);
 
     Task<ReportDownloadDto> DownloadRunAsync(Guid id, CancellationToken cancellationToken = default);
 

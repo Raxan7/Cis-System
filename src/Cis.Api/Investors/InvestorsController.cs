@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -30,10 +31,10 @@ public sealed class InvestorsController : ControllerBase
     [HttpGet]
     [RequirePermission(Permissions.Investors.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<InvestorDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorDto>>>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<InvestorDto>>>> Get([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var investors = await _investorService.GetAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<InvestorDto>>.Success(investors, HttpContext.TraceIdentifier));
+        var investors = await _investorService.GetAsync(pagination, cancellationToken);
+        return this.OkPaged(investors);
     }
 
     [HttpGet("{id:guid}")]

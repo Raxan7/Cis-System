@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -21,10 +22,10 @@ public sealed class AuditLogsController : ControllerBase
     [HttpGet]
     [RequirePermission(Permissions.Audit.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<AuditLogDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<AuditLogDto>>>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<AuditLogDto>>>> Get([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var auditLogs = await _auditQueryService.GetAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<AuditLogDto>>.Success(auditLogs, HttpContext.TraceIdentifier));
+        var auditLogs = await _auditQueryService.GetAsync(pagination, cancellationToken);
+        return this.OkPaged(auditLogs);
     }
 
     [HttpGet("entity/{entityType}/{entityId}")]
@@ -33,9 +34,10 @@ public sealed class AuditLogsController : ControllerBase
     public async Task<ActionResult<ApiResponse<IReadOnlyCollection<AuditLogDto>>>> GetForEntity(
         string entityType,
         string entityId,
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken)
     {
-        var auditLogs = await _auditQueryService.GetForEntityAsync(entityType, entityId, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<AuditLogDto>>.Success(auditLogs, HttpContext.TraceIdentifier));
+        var auditLogs = await _auditQueryService.GetForEntityAsync(entityType, entityId, pagination, cancellationToken);
+        return this.OkPaged(auditLogs);
     }
 }

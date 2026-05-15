@@ -8,8 +8,10 @@ using Cis.Domain.Audit;
 using Cis.Domain.Cash;
 using Cis.Domain.Dealing;
 using Cis.Domain.Schemes;
+using Cis.Infrastructure.Operations;
 using Cis.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Cis.Infrastructure.Cash;
 
@@ -19,23 +21,37 @@ internal sealed class CashService : ICashService
     private readonly IAuditWriter _auditWriter;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IBackgroundJobDispatcher _backgroundJobDispatcher;
+    private readonly PerformanceExecutionOptions _performanceExecutionOptions;
 
     public CashService(
         CisDbContext dbContext,
         IAuditWriter auditWriter,
         ICurrentUserContext currentUserContext,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IBackgroundJobDispatcher backgroundJobDispatcher,
+        IOptions<PerformanceExecutionOptions> performanceExecutionOptions)
     {
         _dbContext = dbContext;
         _auditWriter = auditWriter;
         _currentUserContext = currentUserContext;
         _dateTimeProvider = dateTimeProvider;
+        _backgroundJobDispatcher = backgroundJobDispatcher;
+        _performanceExecutionOptions = performanceExecutionOptions.Value;
     }
 
     public async Task<BankStatementImportDto> ImportBankStatementAsync(ImportBankStatementRequest request, string? idempotencyKey, CancellationToken cancellationToken = default)
     {
         try
         {
+            if (ShouldRunImportAsBackgroundJob(request.CsvContent))
+            {
+                return await _backgroundJobDispatcher.ExecuteAsync(
+                    $"cash:bank-import:{request.StatementDate:yyyyMMdd}:{request.SchemeBankAccountId:N}",
+                    workerCancellationToken => ImportBankStatementCoreAsync(request, idempotencyKey, workerCancellationToken),
+                    cancellationToken);
+            }
+
             return await ImportBankStatementCoreAsync(request, idempotencyKey, cancellationToken);
         }
         catch (InvalidOperationException exception)
@@ -62,26 +78,18 @@ internal sealed class CashService : ICashService
     {
         try
         {
-            var userId = CurrentUserIdOrThrow();
-            var now = _dateTimeProvider.UtcNow;
-            var run = ReconciliationRun.Create(request.SchemeBankAccountId, request.RunDate, request.AgingThresholdDays, userId, now);
-
-            var matchedCount = await _dbContext.BankStatementLines
+            var statementLineCount = await _dbContext.BankStatementLines
                 .AsNoTracking()
-                .Where(line => line.SchemeBankAccountId == request.SchemeBankAccountId && line.MatchStatus == BankStatementMatchStatus.Matched)
-                .CountAsync(cancellationToken);
+                .CountAsync(line => line.SchemeBankAccountId == request.SchemeBankAccountId, cancellationToken);
+            if (statementLineCount >= _performanceExecutionOptions.HeavyReconciliationLineThreshold)
+            {
+                return await _backgroundJobDispatcher.ExecuteAsync(
+                    $"cash:reconciliation:{request.SchemeBankAccountId:N}:{request.RunDate:yyyyMMdd}",
+                    workerCancellationToken => CreateReconciliationRunCoreAsync(request, workerCancellationToken),
+                    cancellationToken);
+            }
 
-            var suspenseQuery = _dbContext.SuspenseItems.AsNoTracking().Where(item => item.SchemeBankAccountId == request.SchemeBankAccountId);
-            var suspenseCount = await suspenseQuery.CountAsync(item => item.Status == SuspenseItemStatus.Open, cancellationToken);
-            var agedThresholdDateTime = request.RunDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(-request.AgingThresholdDays);
-            var agedBreakCount = await suspenseQuery.CountAsync(item => item.Status == SuspenseItemStatus.Open && item.OpenedAtUtc <= agedThresholdDateTime, cancellationToken);
-            var breakCount = suspenseCount;
-            run.Complete(matchedCount, suspenseCount, breakCount, agedBreakCount, userId, now, "Reconciliation run completed.");
-            _dbContext.ReconciliationRuns.Add(run);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            await WriteAuditAsync(AuditEventType.Created, "CashReconciliationRunCreated", "ReconciliationRun", run.Id.ToString(), null, Snapshot(run), "Reconciliation run completed.", cancellationToken);
-            return MapReconciliationRun(run);
+            return await CreateReconciliationRunCoreAsync(request, cancellationToken);
         }
         catch (InvalidOperationException exception)
         {
@@ -91,6 +99,30 @@ internal sealed class CashService : ICashService
         {
             throw Validation(exception.ParamName ?? "reconciliationRun", exception.Message);
         }
+    }
+
+    private async Task<ReconciliationRunDto> CreateReconciliationRunCoreAsync(ReconciliationRunRequest request, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserIdOrThrow();
+        var now = _dateTimeProvider.UtcNow;
+        var run = ReconciliationRun.Create(request.SchemeBankAccountId, request.RunDate, request.AgingThresholdDays, userId, now);
+
+        var matchedCount = await _dbContext.BankStatementLines
+            .AsNoTracking()
+            .Where(line => line.SchemeBankAccountId == request.SchemeBankAccountId && line.MatchStatus == BankStatementMatchStatus.Matched)
+            .CountAsync(cancellationToken);
+
+        var suspenseQuery = _dbContext.SuspenseItems.AsNoTracking().Where(item => item.SchemeBankAccountId == request.SchemeBankAccountId);
+        var suspenseCount = await suspenseQuery.CountAsync(item => item.Status == SuspenseItemStatus.Open, cancellationToken);
+        var agedThresholdDateTime = request.RunDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(-request.AgingThresholdDays);
+        var agedBreakCount = await suspenseQuery.CountAsync(item => item.Status == SuspenseItemStatus.Open && item.OpenedAtUtc <= agedThresholdDateTime, cancellationToken);
+        var breakCount = suspenseCount;
+        run.Complete(matchedCount, suspenseCount, breakCount, agedBreakCount, userId, now, "Reconciliation run completed.");
+        _dbContext.ReconciliationRuns.Add(run);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await WriteAuditAsync(AuditEventType.Created, "CashReconciliationRunCreated", "ReconciliationRun", run.Id.ToString(), null, Snapshot(run), "Reconciliation run completed.", cancellationToken);
+        return MapReconciliationRun(run);
     }
 
     public async Task<ReconciliationRunDto> GetReconciliationRunAsync(Guid id, CancellationToken cancellationToken = default)
@@ -318,6 +350,10 @@ internal sealed class CashService : ICashService
             throw Validation("csvContent", "The CSV file must contain at least one data row.");
         }
 
+        var subscriptionCandidates = await LoadSubscriptionCandidatesAsync(rows, cancellationToken);
+        var paymentCandidates = await LoadPaymentCandidatesAsync(request.SchemeBankAccountId, rows, cancellationToken);
+        var paymentCashBookEntries = await LoadPaymentCashBookEntriesAsync(paymentCandidates, cancellationToken);
+
         var importId = Guid.NewGuid();
         var lines = rows.Select(row => BankStatementLine.Create(
             importId,
@@ -333,16 +369,22 @@ internal sealed class CashService : ICashService
             row.SchemeClassId)).ToList();
 
         var import = BankStatementImport.Create(request.SchemeBankAccountId, request.FileName, request.StatementDate, request.DateToleranceDays, normalizedIdempotencyKey, sourceHash, userId, now, lines);
+        var autoDetectChangesEnabled = _dbContext.ChangeTracker.AutoDetectChangesEnabled;
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        _dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
         _dbContext.BankStatementImports.Add(import);
 
         var matchedCount = 0;
         var suspenseCount = 0;
         var matchedPaymentIds = new List<Guid>();
+        var suspenseItems = new List<SuspenseItem>();
+        var cashBookEntries = new List<CashBookEntry>();
+        var cashMatches = new List<CashMatch>();
         foreach (var line in lines)
         {
             if (line.Direction == BankStatementLineDirection.Credit)
             {
-                var matched = await TryMatchSubscriptionAsync(import, schemeBankAccount, line, userId, now, cancellationToken);
+                var matched = TryMatchSubscription(import, schemeBankAccount, line, userId, now, subscriptionCandidates, cashBookEntries, cashMatches);
                 if (matched)
                 {
                     matchedCount++;
@@ -351,7 +393,7 @@ internal sealed class CashService : ICashService
             }
             else
             {
-                var matchedPaymentId = await TryMatchPaymentAsync(import, line, userId, now, cancellationToken);
+                var matchedPaymentId = TryMatchPayment(import, line, userId, now, paymentCandidates, paymentCashBookEntries, cashMatches);
                 if (matchedPaymentId.HasValue)
                 {
                     matchedCount++;
@@ -363,18 +405,26 @@ internal sealed class CashService : ICashService
             suspenseCount++;
             var suspense = SuspenseItem.Create(line.Id, request.SchemeBankAccountId, line.Amount, schemeBankAccount.Currency, line.Reference, $"Unmatched bank statement line {line.LineNumber}.", userId, now);
             line.MarkSuspense(suspense.Id, userId, now);
-            _dbContext.SuspenseItems.Add(suspense);
+            suspenseItems.Add(suspense);
         }
 
+        _dbContext.CashBookEntries.AddRange(cashBookEntries);
+        _dbContext.CashMatches.AddRange(cashMatches);
+        _dbContext.SuspenseItems.AddRange(suspenseItems);
         import.MarkProcessed(matchedCount, suspenseCount);
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException exception)
         {
             var entries = string.Join(", ", exception.Entries.Select(entry => entry.Metadata.ClrType.Name));
             throw new ConflictException($"Cash bank statement import concurrency conflict on: {entries}.");
+        }
+        finally
+        {
+            _dbContext.ChangeTracker.AutoDetectChangesEnabled = autoDetectChangesEnabled;
         }
 
         await WriteAuditAsync(AuditEventType.Created, "CashBankStatementImported", "BankStatementImport", import.Id.ToString(), null, Snapshot(import), request.FileName, cancellationToken, normalizedIdempotencyKey);
@@ -387,22 +437,37 @@ internal sealed class CashService : ICashService
         return await MapImportAsync(import, cancellationToken);
     }
 
-    private async Task<bool> TryMatchSubscriptionAsync(BankStatementImport import, SchemeBankAccount schemeBankAccount, BankStatementLine line, string userId, DateTime now, CancellationToken cancellationToken)
+    private static bool TryMatchSubscription(
+        BankStatementImport import,
+        SchemeBankAccount schemeBankAccount,
+        BankStatementLine line,
+        string userId,
+        DateTime now,
+        IReadOnlyDictionary<SubscriptionMatchKey, List<DealingInstruction>> subscriptionCandidates,
+        ICollection<CashBookEntry> cashBookEntries,
+        ICollection<CashMatch> cashMatches)
     {
         if (!line.InvestorId.HasValue || !line.SchemeId.HasValue || !line.SchemeClassId.HasValue)
         {
             return false;
         }
 
-        var candidate = await _dbContext.DealingInstructions
-            .Include(instruction => instruction.SubscriptionInstructions)
-            .SingleOrDefaultAsync(instruction =>
-                instruction.Status == DealingInstructionStatus.PendingFunds &&
-                instruction.InvestorId == line.InvestorId &&
-                instruction.SchemeId == line.SchemeId &&
-                instruction.SchemeClassId == line.SchemeClassId &&
-                instruction.InstructionNumber == line.Reference,
-                cancellationToken);
+        if (!subscriptionCandidates.TryGetValue(new SubscriptionMatchKey(line.InvestorId.Value, line.SchemeId.Value, line.SchemeClassId.Value, line.Reference), out var candidates))
+        {
+            return false;
+        }
+
+        var candidate = candidates.FirstOrDefault(instruction =>
+        {
+            var subscriptionInstruction = instruction.SubscriptionInstructions.Single();
+            if (!subscriptionInstruction.Amount.HasValue || subscriptionInstruction.Amount.Value != line.Amount)
+            {
+                return false;
+            }
+
+            var dayDelta = Math.Abs(instruction.BusinessDate.Value.DayNumber - line.TransactionDate.DayNumber);
+            return dayDelta <= import.DateToleranceDays;
+        });
 
         if (candidate is null)
         {
@@ -411,12 +476,6 @@ internal sealed class CashService : ICashService
 
         var subscription = candidate.SubscriptionInstructions.Single();
         if (!subscription.Amount.HasValue || subscription.Amount.Value != line.Amount)
-        {
-            return false;
-        }
-
-        var dayDelta = Math.Abs(candidate.BusinessDate.Value.DayNumber - line.TransactionDate.DayNumber);
-        if (dayDelta > import.DateToleranceDays)
         {
             return false;
         }
@@ -437,39 +496,123 @@ internal sealed class CashService : ICashService
             line.Description,
             userId,
             now);
-        _dbContext.CashBookEntries.Add(cashBookEntry);
-        _dbContext.CashMatches.Add(CashMatch.Create(line.Id, cashBookEntry.Id, CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, candidate.Id, nameof(DealingInstruction), userId, now));
+        cashBookEntries.Add(cashBookEntry);
+        cashMatches.Add(CashMatch.Create(line.Id, cashBookEntry.Id, CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, candidate.Id, nameof(DealingInstruction), userId, now));
         line.MarkMatched(cashBookEntry.Id, candidate.Id, nameof(DealingInstruction), CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, userId, now);
         return true;
     }
 
-    private async Task<Guid?> TryMatchPaymentAsync(BankStatementImport import, BankStatementLine line, string userId, DateTime now, CancellationToken cancellationToken)
+    private static Guid? TryMatchPayment(
+        BankStatementImport import,
+        BankStatementLine line,
+        string userId,
+        DateTime now,
+        IReadOnlyDictionary<PaymentMatchKey, List<PaymentInstruction>> paymentCandidates,
+        IReadOnlyDictionary<Guid, CashBookEntry> paymentCashBookEntries,
+        ICollection<CashMatch> cashMatches)
     {
         if (!line.InvestorId.HasValue || !line.SchemeId.HasValue || !line.SchemeClassId.HasValue)
         {
             return null;
         }
 
-        var candidate = await _dbContext.PaymentInstructions
-            .SingleOrDefaultAsync(payment =>
-                payment.SchemeBankAccountId == import.SchemeBankAccountId &&
-                payment.InvestorId == line.InvestorId &&
-                payment.SchemeId == line.SchemeId &&
-                payment.SchemeClassId == line.SchemeClassId &&
-                payment.Reference == line.Reference &&
-                payment.Amount == line.Amount,
-                cancellationToken);
-
-        if (candidate is null)
+        if (!paymentCandidates.TryGetValue(new PaymentMatchKey(import.SchemeBankAccountId, line.InvestorId.Value, line.SchemeId.Value, line.SchemeClassId.Value, line.Reference, line.Amount), out var candidates))
         {
             return null;
         }
 
-        var cashBookEntry = await _dbContext.CashBookEntries.SingleAsync(entry => entry.SourceType == CashBookEntrySourceType.PaymentInstruction && entry.SourceEntityId == candidate.Id, cancellationToken);
+        var candidate = candidates.FirstOrDefault();
+        if (candidate is null || !paymentCashBookEntries.TryGetValue(candidate.Id, out var cashBookEntry))
+        {
+            return null;
+        }
+
         candidate.MarkCompletedFromBankMatch(line.Reference, userId, now);
-        _dbContext.CashMatches.Add(CashMatch.Create(line.Id, cashBookEntry.Id, CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, candidate.Id, nameof(PaymentInstruction), userId, now));
+        cashMatches.Add(CashMatch.Create(line.Id, cashBookEntry.Id, CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, candidate.Id, nameof(PaymentInstruction), userId, now));
         line.MarkMatched(cashBookEntry.Id, candidate.Id, nameof(PaymentInstruction), CashMatchRule.ReferenceAmountDateInvestorSchemeBankAccount, userId, now);
         return candidate.Id;
+    }
+
+    private async Task<IReadOnlyDictionary<SubscriptionMatchKey, List<DealingInstruction>>> LoadSubscriptionCandidatesAsync(
+        IReadOnlyCollection<ParsedStatementRow> rows,
+        CancellationToken cancellationToken)
+    {
+        var rowsWithTarget = rows
+            .Where(row => row.Direction == BankStatementLineDirection.Credit && row.InvestorId.HasValue && row.SchemeId.HasValue && row.SchemeClassId.HasValue)
+            .ToArray();
+        if (rowsWithTarget.Length == 0)
+        {
+            return new Dictionary<SubscriptionMatchKey, List<DealingInstruction>>();
+        }
+
+        var references = rowsWithTarget.Select(row => row.Reference).Distinct().ToArray();
+        var investorIds = rowsWithTarget.Select(row => row.InvestorId!.Value).Distinct().ToArray();
+        var schemeIds = rowsWithTarget.Select(row => row.SchemeId!.Value).Distinct().ToArray();
+        var classIds = rowsWithTarget.Select(row => row.SchemeClassId!.Value).Distinct().ToArray();
+
+        var candidates = await _dbContext.DealingInstructions
+            .Include(instruction => instruction.SubscriptionInstructions)
+            .Where(instruction =>
+                instruction.Status == DealingInstructionStatus.PendingFunds &&
+                references.Contains(instruction.InstructionNumber) &&
+                investorIds.Contains(instruction.InvestorId) &&
+                schemeIds.Contains(instruction.SchemeId) &&
+                classIds.Contains(instruction.SchemeClassId))
+            .ToListAsync(cancellationToken);
+
+        return candidates
+            .GroupBy(instruction => new SubscriptionMatchKey(instruction.InvestorId, instruction.SchemeId, instruction.SchemeClassId, instruction.InstructionNumber))
+            .ToDictionary(group => group.Key, group => group.ToList());
+    }
+
+    private async Task<IReadOnlyDictionary<PaymentMatchKey, List<PaymentInstruction>>> LoadPaymentCandidatesAsync(
+        Guid schemeBankAccountId,
+        IReadOnlyCollection<ParsedStatementRow> rows,
+        CancellationToken cancellationToken)
+    {
+        var rowsWithTarget = rows
+            .Where(row => row.Direction == BankStatementLineDirection.Debit && row.InvestorId.HasValue && row.SchemeId.HasValue && row.SchemeClassId.HasValue)
+            .ToArray();
+        if (rowsWithTarget.Length == 0)
+        {
+            return new Dictionary<PaymentMatchKey, List<PaymentInstruction>>();
+        }
+
+        var references = rowsWithTarget.Select(row => row.Reference).Distinct().ToArray();
+        var investorIds = rowsWithTarget.Select(row => row.InvestorId!.Value).Distinct().ToArray();
+        var schemeIds = rowsWithTarget.Select(row => row.SchemeId!.Value).Distinct().ToArray();
+        var classIds = rowsWithTarget.Select(row => row.SchemeClassId!.Value).Distinct().ToArray();
+        var amounts = rowsWithTarget.Select(row => row.Amount).Distinct().ToArray();
+
+        var candidates = await _dbContext.PaymentInstructions
+            .Include(payment => payment.StatusEvents)
+            .Where(payment =>
+                payment.SchemeBankAccountId == schemeBankAccountId &&
+                references.Contains(payment.Reference) &&
+                investorIds.Contains(payment.InvestorId) &&
+                schemeIds.Contains(payment.SchemeId) &&
+                classIds.Contains(payment.SchemeClassId) &&
+                amounts.Contains(payment.Amount))
+            .ToListAsync(cancellationToken);
+
+        return candidates
+            .GroupBy(payment => new PaymentMatchKey(payment.SchemeBankAccountId, payment.InvestorId, payment.SchemeId, payment.SchemeClassId, payment.Reference, payment.Amount))
+            .ToDictionary(group => group.Key, group => group.ToList());
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, CashBookEntry>> LoadPaymentCashBookEntriesAsync(
+        IReadOnlyDictionary<PaymentMatchKey, List<PaymentInstruction>> paymentCandidates,
+        CancellationToken cancellationToken)
+    {
+        var paymentIds = paymentCandidates.Values.SelectMany(items => items).Select(payment => payment.Id).Distinct().ToArray();
+        if (paymentIds.Length == 0)
+        {
+            return new Dictionary<Guid, CashBookEntry>();
+        }
+
+        return await _dbContext.CashBookEntries
+            .Where(entry => entry.SourceType == CashBookEntrySourceType.PaymentInstruction && paymentIds.Contains(entry.SourceEntityId))
+            .ToDictionaryAsync(entry => entry.SourceEntityId, cancellationToken);
     }
 
     private async Task<BankStatementImportDto> MapImportAsync(BankStatementImport import, CancellationToken cancellationToken)
@@ -787,4 +930,14 @@ internal sealed class CashService : ICashService
         Guid? InvestorId,
         Guid? SchemeId,
         Guid? SchemeClassId);
+
+    private sealed record SubscriptionMatchKey(Guid InvestorId, Guid SchemeId, Guid SchemeClassId, string Reference);
+
+    private sealed record PaymentMatchKey(Guid SchemeBankAccountId, Guid InvestorId, Guid SchemeId, Guid SchemeClassId, string Reference, decimal Amount);
+
+    private bool ShouldRunImportAsBackgroundJob(string csvContent)
+    {
+        var rows = csvContent.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return Math.Max(0, rows.Length - 1) >= _performanceExecutionOptions.HeavyImportLineThreshold;
+    }
 }

@@ -1,4 +1,5 @@
 using Cis.Application.Common.Interfaces;
+using Cis.Contracts;
 using Cis.Contracts.Audit;
 using Cis.Domain.Audit;
 using Cis.Infrastructure.Persistence;
@@ -49,13 +50,13 @@ internal sealed class AuditLogWriter : IAuditLogWriter, IAuditQueryService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<AuditLogDto>> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<AuditLogDto>> GetAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.AuditLogs
-            .AsNoTracking()
-            .OrderByDescending(auditLog => auditLog.OccurredAtUtc)
-            .ThenByDescending(auditLog => auditLog.Id)
-            .Take(500)
+        var query = ApplyAuditLogFilters(_dbContext.AuditLogs.AsNoTracking(), pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await ApplyAuditLogSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
             .Select(auditLog => new AuditLogDto(
                 auditLog.Id,
                 auditLog.Module,
@@ -74,17 +75,26 @@ internal sealed class AuditLogWriter : IAuditLogWriter, IAuditQueryService
                 auditLog.Reason ?? auditLog.Summary,
                 auditLog.WorkflowId))
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<AuditLogDto>(items, totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
-    public async Task<IReadOnlyCollection<AuditLogDto>> GetForEntityAsync(
+    public async Task<PagedResult<AuditLogDto>> GetForEntityAsync(
         string entityType,
         string entityId,
+        PaginationRequest pagination,
         CancellationToken cancellationToken = default)
     {
-        return await _dbContext.AuditLogs
+        var query = ApplyAuditLogFilters(
+            _dbContext.AuditLogs
             .AsNoTracking()
-            .Where(auditLog => auditLog.EntityName == entityType && auditLog.EntityId == entityId)
-            .OrderBy(auditLog => auditLog.OccurredAtUtc)
+            .Where(auditLog => auditLog.EntityName == entityType && auditLog.EntityId == entityId),
+            pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await ApplyAuditLogSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
+            .AsNoTracking()
             .Select(auditLog => new AuditLogDto(
                 auditLog.Id,
                 auditLog.Module,
@@ -103,6 +113,39 @@ internal sealed class AuditLogWriter : IAuditLogWriter, IAuditQueryService
                 auditLog.Reason ?? auditLog.Summary,
                 auditLog.WorkflowId))
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<AuditLogDto>(items, totalCount, pagination.PageNumber, pagination.PageSize);
+    }
+
+    private static IQueryable<AuditLog> ApplyAuditLogFilters(IQueryable<AuditLog> query, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return query;
+        }
+
+        var search = pagination.Search.Trim();
+        return query.Where(auditLog =>
+            auditLog.Module.Contains(search) ||
+            auditLog.Action.Contains(search) ||
+            auditLog.EntityName.Contains(search) ||
+            (auditLog.EntityId != null && auditLog.EntityId.Contains(search)) ||
+            (auditLog.ActorDisplayName != null && auditLog.ActorDisplayName.Contains(search)) ||
+            (auditLog.ActorId != null && auditLog.ActorId.Contains(search)));
+    }
+
+    private static IQueryable<AuditLog> ApplyAuditLogSorting(IQueryable<AuditLog> query, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "MODULE" => descending ? query.OrderByDescending(auditLog => auditLog.Module).ThenByDescending(auditLog => auditLog.OccurredAtUtc) : query.OrderBy(auditLog => auditLog.Module).ThenByDescending(auditLog => auditLog.OccurredAtUtc),
+            "ACTION" => descending ? query.OrderByDescending(auditLog => auditLog.Action).ThenByDescending(auditLog => auditLog.OccurredAtUtc) : query.OrderBy(auditLog => auditLog.Action).ThenByDescending(auditLog => auditLog.OccurredAtUtc),
+            "EVENTTYPE" => descending ? query.OrderByDescending(auditLog => auditLog.EventType).ThenByDescending(auditLog => auditLog.OccurredAtUtc) : query.OrderBy(auditLog => auditLog.EventType).ThenByDescending(auditLog => auditLog.OccurredAtUtc),
+            _ => descending || string.IsNullOrWhiteSpace(pagination.SortBy)
+                ? query.OrderByDescending(auditLog => auditLog.OccurredAtUtc).ThenByDescending(auditLog => auditLog.Id)
+                : query.OrderBy(auditLog => auditLog.OccurredAtUtc).ThenBy(auditLog => auditLog.Id)
+        };
     }
 
     private string? CurrentRoles()

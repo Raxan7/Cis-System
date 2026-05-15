@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -32,10 +33,10 @@ public sealed class UsersController : ControllerBase
     [HttpGet]
     [RequirePermission(Permissions.Identity.UsersRead)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<UserDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<UserDto>>>> GetUsers(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<UserDto>>>> GetUsers([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var users = await _identityService.GetUsersAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<UserDto>>.Success(users, HttpContext.TraceIdentifier));
+        var users = await _identityService.GetUsersAsync(pagination, cancellationToken);
+        return this.OkPaged(users);
     }
 
     [HttpGet("{id:guid}")]

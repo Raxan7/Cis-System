@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -32,10 +33,10 @@ public sealed class SchemesController : ControllerBase
     [HttpGet]
     [RequirePermission(Permissions.Schemes.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<SchemeDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<SchemeDto>>>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<SchemeDto>>>> Get([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
-        var schemes = await _schemeService.GetAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<SchemeDto>>.Success(schemes, HttpContext.TraceIdentifier));
+        var schemes = await _schemeService.GetAsync(pagination, cancellationToken);
+        return this.OkPaged(schemes);
     }
 
     [HttpGet("{id:guid}")]

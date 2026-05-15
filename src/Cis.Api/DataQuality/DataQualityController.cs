@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -36,10 +37,10 @@ public sealed class DataQualityController : ControllerBase
 
     [HttpGet("exceptions")]
     [RequirePermission(Permissions.DataQuality.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DataQualityExceptionDto>>>> GetExceptions(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DataQualityExceptionDto>>>> GetExceptions([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var exceptions = await _dataQualityService.GetExceptionsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<DataQualityExceptionDto>>.Success(exceptions, HttpContext.TraceIdentifier));
+        return this.OkPaged(exceptions, pagination);
     }
 
     [HttpPost("exceptions/{id:guid}/assign")]

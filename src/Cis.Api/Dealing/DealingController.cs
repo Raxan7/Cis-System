@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -174,18 +175,18 @@ public sealed class DealingController : ControllerBase
     [HttpGet("pending")]
     [RequirePermission(Permissions.Dealing.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<DealingInstructionDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DealingInstructionDto>>>> GetPending(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DealingInstructionDto>>>> GetPending([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var instructions = await _dealingService.GetPendingAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<DealingInstructionDto>>.Success(instructions, HttpContext.TraceIdentifier));
+        return this.OkPaged(instructions, pagination);
     }
 
     [HttpGet("cutoff-breaches")]
     [RequirePermission(Permissions.Dealing.Read)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<CutOffBreachDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<CutOffBreachDto>>>> GetCutOffBreaches(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<CutOffBreachDto>>>> GetCutOffBreaches([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var breaches = await _dealingService.GetCutOffBreachesAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<CutOffBreachDto>>.Success(breaches, HttpContext.TraceIdentifier));
+        return this.OkPaged(breaches, pagination);
     }
 }

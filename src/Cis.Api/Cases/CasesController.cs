@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -28,10 +29,10 @@ public sealed class CasesController : ControllerBase
 
     [HttpGet]
     [RequirePermission(Permissions.Cases.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ServiceCaseDto>>>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ServiceCaseDto>>>> Get([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var cases = await _caseManagementService.GetCasesAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<ServiceCaseDto>>.Success(cases, HttpContext.TraceIdentifier));
+        return this.OkPaged(cases, pagination);
     }
 
     [HttpGet("dashboard")]

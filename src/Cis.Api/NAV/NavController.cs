@@ -1,4 +1,5 @@
 using Cis.Api.Security;
+using Cis.Api.Common;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
 using Cis.Contracts;
@@ -128,10 +129,11 @@ public sealed class NavController : ControllerBase
         [FromQuery] Guid? schemeClassId,
         [FromQuery] DateOnly? fromDate,
         [FromQuery] DateOnly? toDate,
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken)
     {
         var history = await _navService.GetHistoryAsync(schemeId, schemeClassId, fromDate, toDate, cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<NavPublicationDto>>.Success(history, HttpContext.TraceIdentifier));
+        return this.OkPaged(history, pagination);
     }
 
     [HttpGet("reconstruct")]

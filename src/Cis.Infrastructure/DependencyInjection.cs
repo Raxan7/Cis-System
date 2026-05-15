@@ -47,6 +47,11 @@ public static class DependencyInjection
         services.Configure<SecurityRateLimitingOptions>(configuration.GetSection(SecurityRateLimitingOptions.SectionName));
         services.Configure<FileUploadSecurityOptions>(configuration.GetSection(FileUploadSecurityOptions.SectionName));
         services.Configure<MfaEnforcementOptions>(configuration.GetSection(MfaEnforcementOptions.SectionName));
+        services.Configure<PerformanceExecutionOptions>(configuration.GetSection(PerformanceExecutionOptions.SectionName));
+        services.AddMemoryCache();
+        services.AddSingleton<BackgroundJobDispatcher>();
+        services.AddSingleton<IBackgroundJobDispatcher>(provider => provider.GetRequiredService<BackgroundJobDispatcher>());
+        services.AddHostedService(provider => provider.GetRequiredService<BackgroundJobDispatcher>());
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddScoped<ICurrentUserContext, CurrentUserContext>();
         services.AddScoped<IAuditLogWriter, AuditLogWriter>();

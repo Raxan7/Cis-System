@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cis.Application.Common.Exceptions;
 using Cis.Application.Common.Interfaces;
+using Cis.Contracts;
 using Cis.Contracts.Schemes;
 using Cis.Domain.Audit;
 using Cis.Domain.Common;
@@ -51,11 +52,13 @@ internal sealed class SchemeService : ISchemeService
         return dto;
     }
 
-    public async Task<IReadOnlyCollection<SchemeDto>> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<SchemeDto>> GetAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        var ids = await _dbContext.Schemes
-            .AsNoTracking()
-            .OrderBy(scheme => scheme.Code)
+        var query = ApplySchemeListQuery(_dbContext.Schemes.AsNoTracking(), pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var ids = await ApplySchemeListSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
             .Select(scheme => scheme.Id)
             .ToListAsync(cancellationToken);
 
@@ -65,12 +68,40 @@ internal sealed class SchemeService : ISchemeService
             schemes.Add(await MapSchemeAsync(id, cancellationToken));
         }
 
-        return schemes;
+        return new PagedResult<SchemeDto>(schemes, totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
     public Task<SchemeDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return MapSchemeAsync(id, cancellationToken);
+    }
+
+    private static IQueryable<Scheme> ApplySchemeListQuery(IQueryable<Scheme> query, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return query;
+        }
+
+        var search = pagination.Search.Trim();
+        return query.Where(scheme =>
+            scheme.Code.Contains(search) ||
+            scheme.Name.Contains(search) ||
+            scheme.LegalType.Contains(search) ||
+            scheme.BaseCurrency.Contains(search));
+    }
+
+    private static IQueryable<Scheme> ApplySchemeListSorting(IQueryable<Scheme> query, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "NAME" => descending ? query.OrderByDescending(scheme => scheme.Name).ThenBy(scheme => scheme.Code) : query.OrderBy(scheme => scheme.Name).ThenBy(scheme => scheme.Code),
+            "STATUS" => descending ? query.OrderByDescending(scheme => scheme.Status).ThenBy(scheme => scheme.Code) : query.OrderBy(scheme => scheme.Status).ThenBy(scheme => scheme.Code),
+            "BASECURRENCY" => descending ? query.OrderByDescending(scheme => scheme.BaseCurrency).ThenBy(scheme => scheme.Code) : query.OrderBy(scheme => scheme.BaseCurrency).ThenBy(scheme => scheme.Code),
+            "CREATEDATUTC" => descending ? query.OrderByDescending(scheme => scheme.Audit.CreatedAtUtc).ThenBy(scheme => scheme.Code) : query.OrderBy(scheme => scheme.Audit.CreatedAtUtc).ThenBy(scheme => scheme.Code),
+            _ => descending ? query.OrderByDescending(scheme => scheme.Code) : query.OrderBy(scheme => scheme.Code)
+        };
     }
 
     public Task<SchemeDto> UpdateAsync(Guid id, UpdateSchemeRequest request, CancellationToken cancellationToken = default)

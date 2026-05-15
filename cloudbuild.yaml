@@ -1,0 +1,33 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA', '-f', 'src/Cis.Api/Dockerfile', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy ${_SERVICE_NAME} \
+          --image gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --set-env-vars=ASPNETCORE_URLS=http://+:8080,ConnectionStrings__CisDb=${_NEON_CONN},Database__InitializeOnStartup=true,Database__ApplyMigrationsOnStartup=true,ASPNETCORE_ENVIRONMENT=Production,Jwt__SigningKey=${_JWT_SIGNING_KEY},Jwt__Issuer=${_JWT_ISSUER},Jwt__Audience=${_JWT_AUDIENCE}
+
+images:
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
+
+substitutions:
+  _SERVICE_NAME: 'cis-api'
+  _REGION: 'us-central1'
+  _NEON_CONN: 'REPLACE_WITH_NEON_CONNECTION_STRING'
+  _JWT_SIGNING_KEY: 'REPLACE_WITH_SECURE_KEY'
+  _JWT_ISSUER: 'Victory.CIS'
+  _JWT_AUDIENCE: 'Victory.CIS.Api'
+
+options:
+  substitution_option: 'ALLOW_LOOSE'

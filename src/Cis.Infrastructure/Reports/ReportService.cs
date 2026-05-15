@@ -4,12 +4,16 @@ using System.Text.Json;
 using Cis.Application.Common.Exceptions;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
+using Cis.Contracts;
 using Cis.Contracts.Reports;
 using Cis.Domain.Audit;
 using Cis.Domain.Common;
 using Cis.Domain.Reports;
+using Cis.Infrastructure.Operations;
 using Cis.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace Cis.Infrastructure.Reports;
 
@@ -23,26 +27,58 @@ internal sealed class ReportService : IReportService
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ReportQueryHandlerRegistry _queryHandlerRegistry;
+    private readonly IMemoryCache _memoryCache;
+    private readonly IBackgroundJobDispatcher _backgroundJobDispatcher;
+    private readonly PerformanceExecutionOptions _performanceExecutionOptions;
 
-    public ReportService(CisDbContext dbContext, IAuditWriter auditWriter, ICurrentUserContext currentUserContext, IDateTimeProvider dateTimeProvider)
+    public ReportService(
+        CisDbContext dbContext,
+        IAuditWriter auditWriter,
+        ICurrentUserContext currentUserContext,
+        IDateTimeProvider dateTimeProvider,
+        IMemoryCache memoryCache,
+        IBackgroundJobDispatcher backgroundJobDispatcher,
+        IOptions<PerformanceExecutionOptions> performanceExecutionOptions)
     {
         _dbContext = dbContext;
         _auditWriter = auditWriter;
         _currentUserContext = currentUserContext;
         _dateTimeProvider = dateTimeProvider;
         _queryHandlerRegistry = new ReportQueryHandlerRegistry(dbContext, dateTimeProvider);
+        _memoryCache = memoryCache;
+        _backgroundJobDispatcher = backgroundJobDispatcher;
+        _performanceExecutionOptions = performanceExecutionOptions.Value;
     }
 
-    public async Task<IReadOnlyCollection<ReportDefinitionDto>> GetDefinitionsAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<ReportDefinitionDto>> GetDefinitionsAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        var definitions = await _dbContext.ReportDefinitions
-            .AsNoTracking()
-            .Include(definition => definition.Owners)
-            .Where(definition => definition.IsActive)
-            .OrderBy(definition => definition.Code)
-            .ToListAsync(cancellationToken);
+        var definitions = await _memoryCache.GetOrCreateAsync("reports:definitions:active", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(15);
+            entry.SlidingExpiration = TimeSpan.FromMinutes(5);
 
-        return definitions.Where(CanAccess).Select(MapDefinition).ToArray();
+            var loaded = await _dbContext.ReportDefinitions
+                .AsNoTracking()
+                .Include(definition => definition.Owners)
+                .Where(definition => definition.IsActive)
+                .OrderBy(definition => definition.Code)
+                .ToListAsync(cancellationToken);
+
+            return loaded.Select(MapDefinition).ToArray();
+        }) ?? [];
+
+        var accessible = definitions
+            .Where(definition => CanAccess(definition.RequiredPermission))
+            .ToArray();
+
+        var filtered = ApplyReportDefinitionSearch(accessible, pagination);
+        var totalCount = filtered.Count;
+        var items = ApplyReportDefinitionSorting(filtered, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
+            .ToArray();
+
+        return new PagedResult<ReportDefinitionDto>(items, totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
     public async Task<ReportScheduleDto> CreateScheduleAsync(CreateReportScheduleRequest request, CancellationToken cancellationToken = default)
@@ -70,8 +106,6 @@ internal sealed class ReportService : IReportService
 
     public async Task<ReportRunDto> RunReportAsync(string code, RunReportRequest request, CancellationToken cancellationToken = default)
     {
-        var actor = CurrentUserIdOrThrow();
-        var now = _dateTimeProvider.UtcNow;
         var definition = await LoadDefinitionByCodeAsync(code, cancellationToken);
         EnsureCanAccess(definition);
 
@@ -79,6 +113,27 @@ internal sealed class ReportService : IReportService
         {
             throw Validation("outputs", "At least one report output format is required.");
         }
+
+        var actor = CurrentUserIdOrThrow();
+        var now = _dateTimeProvider.UtcNow;
+        if (ShouldRunAsBackgroundJob(definition.Code, request))
+        {
+            return await _backgroundJobDispatcher.ExecuteAsync(
+                $"report:{definition.Code}:{request.BusinessDate:yyyyMMdd}",
+                workerCancellationToken => RunReportCoreAsync(definition, request, actor, now, workerCancellationToken),
+                cancellationToken);
+        }
+
+        return await RunReportCoreAsync(definition, request, actor, now, cancellationToken);
+    }
+
+    private async Task<ReportRunDto> RunReportCoreAsync(
+        ReportDefinition definition,
+        RunReportRequest request,
+        string actor,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
 
         try
         {
@@ -195,20 +250,32 @@ internal sealed class ReportService : IReportService
         return dto;
     }
 
-    public async Task<IReadOnlyCollection<ReportRunDto>> GetRunsAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<ReportRunDto>> GetRunsAsync(PaginationRequest pagination, CancellationToken cancellationToken = default)
     {
-        var runs = await _dbContext.ReportRuns
+        var definitions = await _dbContext.ReportDefinitions
             .AsNoTracking()
-            .Include(run => run.Parameters)
-            .Include(run => run.Outputs)
-            .Include(run => run.Approvals)
-            .Include(run => run.Distributions)
-            .OrderByDescending(run => run.GeneratedAtUtc)
-            .Take(200)
+            .ToDictionaryAsync(definition => definition.Id, cancellationToken);
+        var accessibleDefinitionIds = definitions
+            .Where(item => CanAccess(item.Value))
+            .Select(item => item.Key)
+            .ToArray();
+
+        var query = ApplyReportRunQuery(
+            _dbContext.ReportRuns
+                .AsNoTracking()
+                .Include(run => run.Parameters)
+                .Include(run => run.Outputs)
+                .Include(run => run.Approvals)
+                .Include(run => run.Distributions)
+                .Where(run => accessibleDefinitionIds.Contains(run.ReportDefinitionId)),
+            pagination);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var runs = await ApplyReportRunSorting(query, pagination)
+            .Skip(pagination.Skip)
+            .Take(pagination.PageSize)
             .ToListAsync(cancellationToken);
 
-        var definitions = await _dbContext.ReportDefinitions.AsNoTracking().ToDictionaryAsync(definition => definition.Id, cancellationToken);
-        return runs.Where(run => definitions.TryGetValue(run.ReportDefinitionId, out var definition) && CanAccess(definition)).Select(MapRun).ToArray();
+        return new PagedResult<ReportRunDto>(runs.Select(MapRun).ToArray(), totalCount, pagination.PageNumber, pagination.PageSize);
     }
 
     public async Task<ReportDownloadDto> DownloadRunAsync(Guid id, CancellationToken cancellationToken = default)
@@ -299,8 +366,13 @@ internal sealed class ReportService : IReportService
 
     private bool CanAccess(ReportDefinition definition)
     {
+        return CanAccess(definition.RequiredPermission);
+    }
+
+    private bool CanAccess(string requiredPermission)
+    {
         return HasPermission(Permissions.All)
-            || HasPermission(definition.RequiredPermission);
+            || HasPermission(requiredPermission);
     }
 
     private void EnsureCanAccess(ReportDefinition definition)
@@ -460,5 +532,71 @@ internal sealed class ReportService : IReportService
     private static ValidationException Validation(string field, string message)
     {
         return new ValidationException(new Dictionary<string, string[]> { [field] = [message] });
+    }
+
+    private static IReadOnlyCollection<ReportDefinitionDto> ApplyReportDefinitionSearch(IReadOnlyCollection<ReportDefinitionDto> definitions, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return definitions;
+        }
+
+        var search = pagination.Search.Trim();
+        return definitions.Where(definition =>
+            definition.Code.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            definition.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            definition.Category.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
+    private static IEnumerable<ReportDefinitionDto> ApplyReportDefinitionSorting(IReadOnlyCollection<ReportDefinitionDto> definitions, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "NAME" => descending ? definitions.OrderByDescending(definition => definition.Name).ThenBy(definition => definition.Code) : definitions.OrderBy(definition => definition.Name).ThenBy(definition => definition.Code),
+            "CATEGORY" => descending ? definitions.OrderByDescending(definition => definition.Category).ThenBy(definition => definition.Code) : definitions.OrderBy(definition => definition.Category).ThenBy(definition => definition.Code),
+            "FREQUENCY" => descending ? definitions.OrderByDescending(definition => definition.Frequency).ThenBy(definition => definition.Code) : definitions.OrderBy(definition => definition.Frequency).ThenBy(definition => definition.Code),
+            _ => descending ? definitions.OrderByDescending(definition => definition.Code) : definitions.OrderBy(definition => definition.Code)
+        };
+    }
+
+    private static IQueryable<ReportRun> ApplyReportRunQuery(IQueryable<ReportRun> query, PaginationRequest pagination)
+    {
+        if (string.IsNullOrWhiteSpace(pagination.Search))
+        {
+            return query;
+        }
+
+        var search = pagination.Search.Trim();
+        return query.Where(run =>
+            run.ReportCode.Contains(search) ||
+            run.GeneratedByUserId.Contains(search) ||
+            run.Status.ToString().Contains(search));
+    }
+
+    private static IQueryable<ReportRun> ApplyReportRunSorting(IQueryable<ReportRun> query, PaginationRequest pagination)
+    {
+        var descending = pagination.IsDescending;
+        return (pagination.SortBy ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "BUSINESSDATE" => descending ? query.OrderByDescending(run => run.BusinessDate).ThenByDescending(run => run.GeneratedAtUtc) : query.OrderBy(run => run.BusinessDate).ThenBy(run => run.GeneratedAtUtc),
+            "REPORTCODE" => descending ? query.OrderByDescending(run => run.ReportCode).ThenByDescending(run => run.GeneratedAtUtc) : query.OrderBy(run => run.ReportCode).ThenByDescending(run => run.GeneratedAtUtc),
+            "STATUS" => descending ? query.OrderByDescending(run => run.Status).ThenByDescending(run => run.GeneratedAtUtc) : query.OrderBy(run => run.Status).ThenByDescending(run => run.GeneratedAtUtc),
+            _ => descending || string.IsNullOrWhiteSpace(pagination.SortBy)
+                ? query.OrderByDescending(run => run.GeneratedAtUtc).ThenByDescending(run => run.Id)
+                : query.OrderBy(run => run.GeneratedAtUtc).ThenBy(run => run.Id)
+        };
+    }
+
+    private bool ShouldRunAsBackgroundJob(string reportCode, RunReportRequest request)
+    {
+        if (request.Outputs.Count >= _performanceExecutionOptions.HeavyReportOutputThreshold)
+        {
+            return true;
+        }
+
+        return _performanceExecutionOptions.HeavyReportCodePrefixes.Any(prefix =>
+            reportCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 }

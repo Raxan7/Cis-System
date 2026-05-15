@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -42,10 +43,10 @@ public sealed class OperationsController : ControllerBase
 
     [HttpGet("backup-runs")]
     [RequirePermission(Permissions.Operations.BackupRead)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<BackupRunRecordDto>>>> GetBackupRuns(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<BackupRunRecordDto>>>> GetBackupRuns([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var records = await _operationsService.GetBackupRunsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<BackupRunRecordDto>>.Success(records, HttpContext.TraceIdentifier));
+        return this.OkPaged(records, pagination);
     }
 
     [HttpPost("dr-tests")]
@@ -58,9 +59,9 @@ public sealed class OperationsController : ControllerBase
 
     [HttpGet("dr-tests")]
     [RequirePermission(Permissions.Operations.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DrTestRecordDto>>>> GetDrTests(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<DrTestRecordDto>>>> GetDrTests([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var records = await _operationsService.GetDrTestsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<DrTestRecordDto>>.Success(records, HttpContext.TraceIdentifier));
+        return this.OkPaged(records, pagination);
     }
 }

@@ -1,3 +1,4 @@
+using Cis.Api.Common;
 using Cis.Api.Security;
 using Cis.Application.Common.Interfaces;
 using Cis.Application.Common.Security;
@@ -80,17 +81,17 @@ public sealed class IntegrationsController : ControllerBase
 
     [HttpGet("messages")]
     [RequirePermission(Permissions.Integrations.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IntegrationMessageDto>>>> GetMessages(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IntegrationMessageDto>>>> GetMessages([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var messages = await _integrationService.GetMessagesAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<IntegrationMessageDto>>.Success(messages, HttpContext.TraceIdentifier));
+        return this.OkPaged(messages, pagination);
     }
 
     [HttpGet("errors")]
     [RequirePermission(Permissions.Integrations.Read)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IntegrationErrorDto>>>> GetErrors(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<IntegrationErrorDto>>>> GetErrors([FromQuery] PaginationRequest pagination, CancellationToken cancellationToken)
     {
         var errors = await _integrationService.GetErrorsAsync(cancellationToken);
-        return Ok(ApiResponse<IReadOnlyCollection<IntegrationErrorDto>>.Success(errors, HttpContext.TraceIdentifier));
+        return this.OkPaged(errors, pagination);
     }
 }
