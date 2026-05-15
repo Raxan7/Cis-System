@@ -28,6 +28,10 @@ substitutions:
   _JWT_SIGNING_KEY: 'REPLACE_WITH_SECURE_KEY'
   _JWT_ISSUER: 'Victory.CIS'
   _JWT_AUDIENCE: 'Victory.CIS.Api'
+  _BUILD_SA: 'projects/neovam/serviceAccounts/cloud-build-sa@neovam.iam.gserviceaccount.com'
 
 options:
+  logging: 'CLOUD_LOGGING_ONLY'
   substitution_option: 'ALLOW_LOOSE'
+
+serviceAccount: '${_BUILD_SA}'
