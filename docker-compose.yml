@@ -19,7 +19,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: src/Cis.Api/Dockerfile
+      dockerfile: src/Cis.Api/Dockerfile.local
     container_name: cis-api
     depends_on:
       postgres:

@@ -20,10 +20,10 @@ frontend/
 deploy/
 scripts/
 
-# Exclude test source files but allow test .csproj files required for restore
-tests/**
-!tests/**/Cis.Tests.Unit.csproj
-!tests/**/Cis.Tests.Integration.csproj
+# Exclude test build artifacts, but keep test source files for the local test build
+tests/**/bin
+tests/**/obj
+tests/**/TestResults
 
 # Logs and temp
 *.log
