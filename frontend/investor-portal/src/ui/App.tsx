@@ -1,0 +1,72 @@
+import type { ReactElement } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { portalPermissions } from '../lib/portal-api';
+import { hasPermission } from '../lib/permissions';
+import { useAuth } from './auth';
+import { AppLayout } from './layout';
+import { ActivityLogPage } from './pages/ActivityLogPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { DocumentUploadPage } from './pages/DocumentUploadPage';
+import { HoldingsPage } from './pages/HoldingsPage';
+import { LoginPage } from './pages/LoginPage';
+import { NoticesPage } from './pages/NoticesPage';
+import { ProfileUpdateRequestPage } from './pages/ProfileUpdateRequestPage';
+import { RedemptionRequestPage } from './pages/RedemptionRequestPage';
+import { RequestStatusPage } from './pages/RequestStatusPage';
+import { StatementsPage } from './pages/StatementsPage';
+import { SubscriptionRequestPage } from './pages/SubscriptionRequestPage';
+import { SwitchRequestPage } from './pages/SwitchRequestPage';
+import { TaxCertificatesPage } from './pages/TaxCertificatesPage';
+import { TransactionsPage } from './pages/TransactionsPage';
+
+function ProtectedLayout() {
+  const { session } = useAuth();
+  const location = useLocation();
+
+  if (!session) {
+    return <Navigate replace state={{ from: location.pathname }} to="/login" />;
+  }
+
+  return <AppLayout />;
+}
+
+function PermissionRoute({
+  permission,
+  element,
+}: {
+  permission: string;
+  element: ReactElement;
+}) {
+  const { session } = useAuth();
+  if (!session || !hasPermission(session.user.permissions, permission)) {
+    return <Navigate replace to="/" />;
+  }
+
+  return element;
+}
+
+export function App() {
+  const { session } = useAuth();
+
+  return (
+    <Routes>
+      <Route element={session ? <Navigate replace to="/" /> : <LoginPage />} path="/login" />
+      <Route element={<ProtectedLayout />}>
+        <Route element={<DashboardPage />} path="/" />
+        <Route element={<PermissionRoute element={<HoldingsPage />} permission={portalPermissions.read} />} path="/holdings" />
+        <Route element={<PermissionRoute element={<TransactionsPage />} permission={portalPermissions.read} />} path="/transactions" />
+        <Route element={<PermissionRoute element={<StatementsPage />} permission={portalPermissions.read} />} path="/statements" />
+        <Route element={<PermissionRoute element={<TaxCertificatesPage />} permission={portalPermissions.read} />} path="/tax-certificates" />
+        <Route element={<PermissionRoute element={<NoticesPage />} permission={portalPermissions.read} />} path="/notices" />
+        <Route element={<PermissionRoute element={<RequestStatusPage />} permission={portalPermissions.read} />} path="/requests" />
+        <Route element={<PermissionRoute element={<SubscriptionRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/subscription" />
+        <Route element={<PermissionRoute element={<RedemptionRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/redemption" />
+        <Route element={<PermissionRoute element={<SwitchRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/switch" />
+        <Route element={<PermissionRoute element={<ProfileUpdateRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/profile-update" />
+        <Route element={<PermissionRoute element={<DocumentUploadPage />} permission={portalPermissions.documentsUpload} />} path="/documents" />
+        <Route element={<PermissionRoute element={<ActivityLogPage />} permission={portalPermissions.read} />} path="/activity" />
+      </Route>
+      <Route element={<Navigate replace to={session ? '/' : '/login'} />} path="*" />
+    </Routes>
+  );
+}

@@ -19,7 +19,11 @@ public sealed record PortalHoldingDto(
     decimal Units,
     decimal LienedUnits,
     decimal RedeemableUnits,
+    decimal? UnitPrice,
+    decimal? MarketValue,
+    decimal? RedeemableAmount,
     int UnitPrecision,
+    DateOnly? LatestValuationDate,
     DateOnly? LastMovementDate,
     string? LastTransactionReference);
 

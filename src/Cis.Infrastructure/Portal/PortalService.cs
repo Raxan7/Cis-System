@@ -5,6 +5,7 @@ using Cis.Contracts.Portal;
 using Cis.Contracts.Workflows;
 using Cis.Domain.Audit;
 using Cis.Domain.Dealing;
+using Cis.Domain.NAV;
 using Cis.Domain.Portal;
 using Cis.Domain.UnitRegister;
 using Cis.Domain.Workflows;
@@ -56,19 +57,52 @@ internal sealed class PortalService : IPortalService
             .Where(holding => holding.InvestorId == context.Profile.InvestorId)
             .OrderBy(holding => holding.SchemeId)
             .ThenBy(holding => holding.SchemeClassId)
-            .Select(holding => new PortalHoldingDto(
-                holding.SchemeId,
-                holding.SchemeClassId,
-                holding.Units,
-                holding.LienedUnits,
-                holding.RedeemableUnits,
-                holding.UnitPrecision,
-                holding.LastMovementDate == null ? null : holding.LastMovementDate.Value,
-                holding.LastTransactionReference))
             .ToListAsync(cancellationToken);
 
+        var schemeClassIds = holdings
+            .Select(holding => holding.SchemeClassId)
+            .Distinct()
+            .ToArray();
+
+        var latestNavByClass = schemeClassIds.Length == 0
+            ? new Dictionary<Guid, PublishedNavSnapshot>()
+            : await (from nav in _dbContext.NavPerUnits.AsNoTracking()
+                     join run in _dbContext.ValuationRuns.AsNoTracking()
+                         on nav.ValuationRunId equals run.Id
+                     where schemeClassIds.Contains(nav.SchemeClassId)
+                           && run.Status == ValuationRunStatus.Published
+                           && run.PublishedAtUtc != null
+                     orderby run.PublishedAtUtc descending
+                     select new PublishedNavSnapshot(
+                         nav.SchemeClassId,
+                         nav.ReportedUnitPrice,
+                         run.ValuationDate.Value))
+                .GroupBy(snapshot => snapshot.SchemeClassId)
+                .ToDictionaryAsync(group => group.Key, group => group.First(), cancellationToken);
+
+        var result = holdings
+            .Select(holding =>
+            {
+                latestNavByClass.TryGetValue(holding.SchemeClassId, out var navSnapshot);
+                var unitPrice = navSnapshot?.UnitPrice;
+                return new PortalHoldingDto(
+                    holding.SchemeId,
+                    holding.SchemeClassId,
+                    holding.Units,
+                    holding.LienedUnits,
+                    holding.RedeemableUnits,
+                    unitPrice,
+                    unitPrice is null ? null : decimal.Round(holding.Units * unitPrice.Value, holding.UnitPrecision, MidpointRounding.AwayFromZero),
+                    unitPrice is null ? null : decimal.Round(holding.RedeemableUnits * unitPrice.Value, holding.UnitPrecision, MidpointRounding.AwayFromZero),
+                    holding.UnitPrecision,
+                    navSnapshot?.ValuationDate,
+                    holding.LastMovementDate == null ? null : holding.LastMovementDate.Value,
+                    holding.LastTransactionReference);
+            })
+            .ToArray();
+
         await LogActivityAsync(context, PortalActivityType.ViewedHoldings, "Portal holdings viewed.", null, null, cancellationToken);
-        return holdings;
+        return result;
     }
 
     public async Task<IReadOnlyCollection<PortalTransactionDto>> GetTransactionsAsync(CancellationToken cancellationToken = default)
@@ -426,4 +460,5 @@ internal sealed class PortalService : IPortalService
     }
 
     private sealed record PortalContext(PortalUserProfile Profile, Domain.Investors.Investor Investor, PortalSession Session, bool MfaRequired, bool MfaSatisfied);
+    private sealed record PublishedNavSnapshot(Guid SchemeClassId, decimal UnitPrice, DateOnly ValuationDate);
 }

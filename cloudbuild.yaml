@@ -30,7 +30,7 @@ substitutions:
   _JWT_SECRET: 'cis-jwt-signing-key'
   _JWT_ISSUER: 'Victory.CIS'
   _JWT_AUDIENCE: 'Victory.CIS.Api'
-  _FRONTEND_ORIGIN: 'https://cis-system.vercel.app'
+  _FRONTEND_ORIGIN: 'https://cis-system.manyerere201.workers.dev'
   _BUILD_SA: 'projects/neovam/serviceAccounts/cloud-build-sa@neovam.iam.gserviceaccount.com'
   _RUN_SA: 'cis-run-sa@neovam.iam.gserviceaccount.com'
 
