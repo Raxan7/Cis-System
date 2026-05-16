@@ -1,19 +1,4 @@
-/* Zoom out the entire app to 80% */
-html {
-  zoom: 0.8;
-  -moz-transform: scale(0.8);
-  -moz-transform-origin: 0 0;
-}
 
-/* For Firefox support */
-@-moz-document url-prefix() {
-  html {
-    transform: scale(0.8);
-    transform-origin: 0 0;
-    width: 125%; /* Compensate for scaling */
-    height: 125%;
-  }
-}
 :root {
   color-scheme: light;
   
