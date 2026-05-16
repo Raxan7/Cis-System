@@ -1,16 +1,16 @@
 /* Zoom out the entire app to 80% */
 html {
-  zoom: 0.9;
-  -moz-transform: scale(0.9);
+  zoom: 0.93;
+  -moz-transform: scale(0.93);
   -moz-transform-origin: 0 0;
 }
 
 /* For Firefox support */
 @-moz-document url-prefix() {
   html {
-    transform: scale(0.9);
+    transform: scale(0.93);
     transform-origin: 0 0;
-    width: 125%; /* Compensate for scaling */
+    width: 100%; /* Compensate for scaling */
     height: 125%;
   }
 }
