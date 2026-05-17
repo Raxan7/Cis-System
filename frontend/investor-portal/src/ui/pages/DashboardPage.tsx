@@ -15,10 +15,14 @@ import {
   getPortalActivity, 
   getPortalHoldings, 
   getPortalNotices,
-  getPortalNAV,
+  getPortalFundNav,
   getPortalPortfolio,
-  getPortalKYC
+  getPortalKycProfile,
+  type PortalPortfolioPositionDto,
+  type PortalPortfolioSummaryDto,
+  type PortalKycProfileDto,
 } from '../../lib/portal-api';
+import { formatNumber, formatDate, titleCase } from '../../lib/format';
 import { loadTrackedRequests } from '../../lib/request-tracker';
 import { PageIntro } from '../components/PageIntro';
 import { StatCard } from '../components/StatCard';
@@ -42,7 +46,7 @@ export function DashboardPage() {
   // NEW: NAV Query
   const navQuery = useQuery({
     queryKey: ['portal', 'nav', 'dashboard'],
-    queryFn: () => getPortalNAV({ pageNumber: 1, pageSize: 5 }),
+    queryFn: () => getPortalFundNav({ pageNumber: 1, pageSize: 5 }),
     refetchInterval: 60000, // Refresh every minute
   });
 
@@ -55,23 +59,22 @@ export function DashboardPage() {
   // NEW: KYC Query
   const kycQuery = useQuery({
     queryKey: ['portal', 'kyc', 'dashboard'],
-    queryFn: getPortalKYC,
+    queryFn: getPortalKycProfile,
   });
 
   const trackedRequests = loadTrackedRequests();
   const holdings = holdingsQuery.data?.data ?? [];
   const navData = navQuery.data?.data ?? [];
-  const portfolioData = portfolioQuery.data?.data ?? [];
-  const kycData = kycQuery.data ?? {};
+  const portfolio: PortalPortfolioSummaryDto | null = portfolioQuery.data ?? null;
+  const kycData: PortalKycProfileDto | null = kycQuery.data ?? null;
 
   // Calculate totals
   const totalMarketValue = holdings.reduce((sum, holding) => sum + Number(holding.marketValue ?? 0), 0);
   const totalRedeemableValue = holdings.reduce((sum, holding) => sum + Number(holding.redeemableAmount ?? 0), 0);
   const totalUnits = holdings.reduce((sum, holding) => sum + Number(holding.units ?? 0), 0);
   
-  // Get latest NAV
-  const latestNAV = navData.length > 0 ? navData[0].nav : 0;
-  const navChange = navData.length > 0 ? navData[0].change : 0;
+  // Get latest NAV (use publishedNav)
+  const latestNAV = navData.length > 0 ? navData[0].publishedNav : 0;
 
   return (
     <div className="stack">
@@ -128,17 +131,15 @@ export function DashboardPage() {
           <p>Net Asset Value for all funds</p>
         </div>
         <div className="mini-grid">
-          {navData.map((nav: any) => (
-            <article className="mini-card" key={nav.fundId}>
+          {navData.map((nav) => (
+            <article className="mini-card" key={nav.schemeId}>
               <div className="mini-card__row">
-                <strong>{nav.fundName}</strong>
-                <StatusBadge value={nav.change >= 0 ? 'Up' : 'Down'} />
+                <strong>{nav.schemeName}</strong>
+                <StatusBadge value={nav.schemeStatus} />
               </div>
-              <p>NAV: TZS {formatNumber(nav.nav)}</p>
-              <p>Change: <span style={{ color: nav.change >= 0 ? '#156646' : '#9e2c2c' }}>
-                {nav.change >= 0 ? '+' : ''}{nav.change}%
-              </span></p>
-              <small>{formatDate(nav.date)}</small>
+              <p>Unit price: {formatNumber(nav.publishedUnitPrice)}</p>
+              <p>NAV: {formatNumber(nav.publishedNav)}</p>
+              <small>{formatDate(nav.publishedAtUtc)}</small>
             </article>
           ))}
         </div>
@@ -151,7 +152,7 @@ export function DashboardPage() {
           <p>Units, redeemable balance, and estimated capital gain across your active positions.</p>
         </div>
         <div className="mini-grid">
-          {(portfolio?.positions ?? []).map((holding) => (
+          {(portfolio?.positions ?? []).map((holding: PortalPortfolioPositionDto) => (
             <article className="mini-card" key={`${holding.schemeId}:${holding.schemeClassId}`}>
               <div className="mini-card__row">
                 <strong>{holding.schemeClassName}</strong>
@@ -174,14 +175,14 @@ export function DashboardPage() {
         </div>
         <div className="two-column">
           <div>
-            <p><strong>NIDA Number:</strong> {kycData.nidaNumber || 'Not provided'}</p>
-            <p><strong>Phone:</strong> {kycData.phoneNumber || 'Not provided'}</p>
-            <p><strong>Address:</strong> {kycData.address || 'Not provided'}</p>
+            <p><strong>NIDA Number:</strong> {kycData?.identityNumber ?? 'Not provided'}</p>
+            <p><strong>Phone:</strong> {kycData?.phoneNumber ?? 'Not provided'}</p>
+            <p><strong>Address:</strong> {kycData?.addressLine1 ?? 'Not provided'}</p>
           </div>
           <div>
-            <p><strong>Bank:</strong> {kycData.bankName || 'Not provided'}</p>
-            <p><strong>Next of Kin:</strong> {kycData.nextOfKinName || 'Not provided'}</p>
-            <p><strong>KYC Status:</strong> <StatusBadge value={kycData.status || 'Incomplete'} /></p>
+            <p><strong>Bank:</strong> {kycData?.bankAccounts?.[0]?.bankName ?? 'Not provided'}</p>
+            <p><strong>Next of Kin:</strong> {kycData?.nextOfKinName ?? 'Not provided'}</p>
+            <p><strong>KYC Status:</strong> <StatusBadge value={kycData?.investorStatus ?? 'Incomplete'} /></p>
           </div>
         </div>
         <div style={{ marginTop: '1rem' }}>
@@ -196,7 +197,7 @@ export function DashboardPage() {
           <p>Digital requests stay in pending approval until the internal workflow clears them.</p>
         </div>
         <div className="stack stack--compact">
-          {trackedRequests.length === 0 ? <p>No submitted portal requests yet.</p> : trackedRequests.slice(0, 5).map((request) => (
+          {trackedRequests.length === 0 ? <p>No submitted portal requests yet.</p> : trackedRequests.slice(0, 5).map((request: any) => (
             <article className="timeline-entry" key={request.id}>
               <div className="timeline-entry__header">
                 <strong>{titleCase(request.requestType)}</strong>
@@ -215,7 +216,7 @@ export function DashboardPage() {
           <p>Portal views, downloads, and submissions recorded on your session.</p>
         </div>
         <div className="stack stack--compact">
-          {(activityQuery.data?.data ?? []).map((entry) => (
+          {(activityQuery.data?.data ?? []).map((entry: any) => (
             <article className="timeline-entry" key={entry.id}>
               <div className="timeline-entry__header">
                 <strong>{titleCase(entry.activityType)}</strong>
