@@ -4,12 +4,8 @@ import {
   FileClock, 
   Landmark, 
   Wallet, 
-  TrendingUp, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  RefreshCw,
+  TrendingUp,
   Banknote,
-  Users
 } from 'lucide-react';
 import { 
   getPortalActivity, 
@@ -53,7 +49,7 @@ export function DashboardPage() {
   // NEW: Portfolio Query
   const portfolioQuery = useQuery({
     queryKey: ['portal', 'portfolio', 'dashboard'],
-    queryFn: () => getPortalPortfolio({ pageNumber: 1, pageSize: 5 }),
+    queryFn: getPortalPortfolio,
   });
 
   // NEW: KYC Query
