@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { createPortalSubscriptionRequest, getPortalHoldings } from '../../lib/portal-api';
+import { createPortalSubscriptionRequest, getPortalFundNav } from '../../lib/portal-api';
 import { rememberTrackedRequest } from '../../lib/request-tracker';
 import { PageIntro } from '../components/PageIntro';
 import { ErrorCallout } from '../components/ErrorCallout';
@@ -19,9 +19,9 @@ type FormValues = z.infer<typeof schema>;
 
 export function SubscriptionRequestPage() {
   const navigate = useNavigate();
-  const holdingsQuery = useQuery({
-    queryKey: ['portal', 'holdings', 'subscription-form'],
-    queryFn: () => getPortalHoldings({ pageNumber: 1, pageSize: 100 }),
+  const fundNavQuery = useQuery({
+    queryKey: ['portal', 'fund-nav', 'subscription-form'],
+    queryFn: () => getPortalFundNav({ pageNumber: 1, pageSize: 100, sortBy: 'PublishedAtUtc', sortDirection: 'desc' }),
   });
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -50,7 +50,7 @@ export function SubscriptionRequestPage() {
       <section className="panel">
         <div className="panel__header">
           <h2>Subscription details</h2>
-          <p>Choose a known scheme/class from your portfolio history or enter the destination identifiers provided by your relationship manager.</p>
+          <p>Choose the destination fund using the latest published NAV list. Your request still enters internal workflow approval before dealing is processed.</p>
         </div>
         <ErrorCallout error={mutation.error} />
         <form
@@ -65,21 +65,22 @@ export function SubscriptionRequestPage() {
           })}
         >
           <label className="field">
-            <span>Known holdings</span>
+            <span>Available fund classes</span>
             <select
               defaultValue=""
               onChange={(event) => {
-                const [schemeId, schemeClassId] = event.target.value.split('|');
-                if (schemeId && schemeClassId) {
+                const [schemeId, schemeClassId, currency] = event.target.value.split('|');
+                if (schemeId && schemeClassId && currency) {
                   form.setValue('schemeId', schemeId, { shouldValidate: true });
                   form.setValue('schemeClassId', schemeClassId, { shouldValidate: true });
+                  form.setValue('currency', currency, { shouldValidate: true });
                 }
               }}
             >
-              <option value="">Select a known scheme/class</option>
-              {(holdingsQuery.data?.data ?? []).map((holding) => (
-                <option key={`${holding.schemeId}:${holding.schemeClassId}`} value={`${holding.schemeId}|${holding.schemeClassId}`}>
-                  {holding.schemeClassId} ({holding.schemeId})
+              <option value="">Select a destination scheme/class</option>
+              {(fundNavQuery.data?.data ?? []).map((fund) => (
+                <option key={`${fund.schemeId}:${fund.schemeClassId}`} value={`${fund.schemeId}|${fund.schemeClassId}|${fund.currency}`}>
+                  {fund.schemeName} / {fund.schemeClassName} ({fund.currency})
                 </option>
               ))}
             </select>

@@ -4,7 +4,17 @@ namespace Cis.Application.Common.Interfaces;
 
 public interface IPortalService
 {
+    Task<PortalSelfRegistrationInitiatedDto> CreateSelfRegistrationAsync(CreatePortalSelfRegistrationRequest request, CancellationToken cancellationToken = default);
+
+    Task<PortalSelfRegistrationActivationDto> VerifySelfRegistrationOtpAsync(VerifyPortalSelfRegistrationOtpRequest request, CancellationToken cancellationToken = default);
+
     Task<PortalProfileDto> GetMeAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyCollection<PortalFundNavDto>> GetFundNavAsync(CancellationToken cancellationToken = default);
+
+    Task<PortalPortfolioSummaryDto> GetPortfolioSummaryAsync(CancellationToken cancellationToken = default);
+
+    Task<PortalKycProfileDto> GetKycProfileAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyCollection<PortalHoldingDto>> GetHoldingsAsync(CancellationToken cancellationToken = default);
 
@@ -21,6 +31,8 @@ public interface IPortalService
     Task<DigitalServiceRequestDto> CreateRedemptionRequestAsync(CreatePortalRedemptionRequest request, CancellationToken cancellationToken = default);
 
     Task<DigitalServiceRequestDto> CreateSwitchRequestAsync(CreatePortalSwitchRequest request, CancellationToken cancellationToken = default);
+
+    Task<DigitalServiceRequestDto> CreateTransferRequestAsync(CreatePortalTransferRequest request, CancellationToken cancellationToken = default);
 
     Task<DigitalServiceRequestDto> CreateProfileUpdateRequestAsync(CreatePortalProfileUpdateRequest request, CancellationToken cancellationToken = default);
 

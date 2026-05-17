@@ -3,10 +3,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { createPortalSwitchRequest, getPortalHoldings } from '../../lib/portal-api';
+import { createPortalSwitchRequest, getPortalFundNav, getPortalHoldings } from '../../lib/portal-api';
 import { rememberTrackedRequest } from '../../lib/request-tracker';
-import { PageIntro } from '../components/PageIntro';
 import { ErrorCallout } from '../components/ErrorCallout';
+import { PageIntro } from '../components/PageIntro';
 
 const schema = z.object({
   sourceSchemeId: z.string().uuid('Enter a valid source scheme id.'),
@@ -62,6 +62,10 @@ export function SwitchRequestPage() {
     queryKey: ['portal', 'holdings', 'switch-form'],
     queryFn: () => getPortalHoldings({ pageNumber: 1, pageSize: 100 }),
   });
+  const fundNavQuery = useQuery({
+    queryKey: ['portal', 'fund-nav', 'switch-form'],
+    queryFn: () => getPortalFundNav({ pageNumber: 1, pageSize: 100, sortBy: 'PublishedAtUtc', sortDirection: 'desc' }),
+  });
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -92,7 +96,7 @@ export function SwitchRequestPage() {
       <section className="panel">
         <div className="panel__header">
           <h2>Switch details</h2>
-          <p>Choose the source holding from your current portfolio, then provide the destination scheme/class identifiers.</p>
+          <p>Choose the source holding from your current portfolio, then choose the destination fund from the published NAV list.</p>
         </div>
         <ErrorCallout error={mutation.error} />
         <form
@@ -124,7 +128,27 @@ export function SwitchRequestPage() {
               <option value="">Select a source holding</option>
               {(holdingsQuery.data?.data ?? []).map((holding) => (
                 <option key={`${holding.schemeId}:${holding.schemeClassId}`} value={`${holding.schemeId}|${holding.schemeClassId}`}>
-                  {holding.schemeClassId} ({holding.schemeId})
+                  {holding.schemeName} / {holding.schemeClassName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Destination fund class</span>
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const [schemeId, schemeClassId] = event.target.value.split('|');
+                if (schemeId && schemeClassId) {
+                  form.setValue('targetSchemeId', schemeId, { shouldValidate: true });
+                  form.setValue('targetSchemeClassId', schemeClassId, { shouldValidate: true });
+                }
+              }}
+            >
+              <option value="">Select a destination fund class</option>
+              {(fundNavQuery.data?.data ?? []).map((fund) => (
+                <option key={`${fund.schemeId}:${fund.schemeClassId}`} value={`${fund.schemeId}|${fund.schemeClassId}`}>
+                  {fund.schemeName} / {fund.schemeClassName}
                 </option>
               ))}
             </select>

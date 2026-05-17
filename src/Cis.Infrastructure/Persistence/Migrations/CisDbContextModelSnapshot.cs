@@ -10316,6 +10316,113 @@ namespace Cis.Infrastructure.Persistence.Migrations
                     b.ToTable("portal_mfa_settings", "portal");
                 });
 
+            modelBuilder.Entity("Cis.Domain.Portal.PortalSelfRegistration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("ActivatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("activated_at_utc");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<int>("FailedOtpAttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_otp_attempt_count");
+
+                    b.Property<Guid?>("InvestorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("investor_id");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<string>("NormalizedPhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("normalized_phone_number");
+
+                    b.Property<string>("OtpCodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("otp_code_hash");
+
+                    b.Property<DateTime>("OtpExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("otp_expires_at_utc");
+
+                    b.Property<DateTime>("OtpSentAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("otp_sent_at_utc");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("password_hash");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone_number");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_portal_self_registrations");
+
+                    b.HasIndex("InvestorId")
+                        .HasDatabaseName("ix_portal_self_registrations_investor_id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("ix_portal_self_registrations_normalized_email");
+
+                    b.HasIndex("NormalizedPhoneNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_portal_self_registrations_normalized_phone_number");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_portal_self_registrations_user_id");
+
+                    b.HasIndex("Status", "OtpExpiresAtUtc")
+                        .HasDatabaseName("ix_portal_self_registrations_status_otp_expires_at_utc");
+
+                    b.ToTable("portal_self_registrations", "portal");
+                });
+
             modelBuilder.Entity("Cis.Domain.Portal.PortalSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -17841,6 +17948,58 @@ namespace Cis.Infrastructure.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("PortalMfaSettingId")
                                 .HasConstraintName("fk_portal_mfa_settings_portal_mfa_settings_id");
+                        });
+
+                    b.Navigation("Audit")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Cis.Domain.Portal.PortalSelfRegistration", b =>
+                {
+                    b.HasOne("Cis.Domain.Investors.Investor", null)
+                        .WithMany()
+                        .HasForeignKey("InvestorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_portal_self_registrations_investors_investor_id");
+
+                    b.HasOne("Cis.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_portal_self_registrations_users_user_id");
+
+                    b.OwnsOne("Cis.Domain.Common.AuditMetadata", "Audit", b1 =>
+                        {
+                            b1.Property<Guid>("PortalSelfRegistrationId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<DateTime>("CreatedAtUtc")
+                                .HasColumnType("timestamp with time zone")
+                                .HasColumnName("created_at_utc");
+
+                            b1.Property<string>("CreatedBy")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("created_by");
+
+                            b1.Property<DateTime?>("LastModifiedAtUtc")
+                                .HasColumnType("timestamp with time zone")
+                                .HasColumnName("last_modified_at_utc");
+
+                            b1.Property<string>("LastModifiedBy")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("last_modified_by");
+
+                            b1.HasKey("PortalSelfRegistrationId");
+
+                            b1.ToTable("portal_self_registrations", "portal");
+
+                            b1.WithOwner()
+                                .HasForeignKey("PortalSelfRegistrationId")
+                                .HasConstraintName("fk_portal_self_registrations_portal_self_registrations_id");
                         });
 
                     b.Navigation("Audit")

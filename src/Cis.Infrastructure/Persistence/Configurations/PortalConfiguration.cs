@@ -25,6 +25,29 @@ internal sealed class PortalUserProfileConfiguration : IEntityTypeConfiguration<
     }
 }
 
+internal sealed class PortalSelfRegistrationConfiguration : IEntityTypeConfiguration<PortalSelfRegistration>
+{
+    public void Configure(EntityTypeBuilder<PortalSelfRegistration> builder)
+    {
+        builder.ToTable("portal_self_registrations", "portal");
+        builder.HasKey(registration => registration.Id);
+        builder.Property(registration => registration.DisplayName).HasMaxLength(200).IsRequired();
+        builder.Property(registration => registration.Email).HasMaxLength(320).IsRequired();
+        builder.Property(registration => registration.NormalizedEmail).HasMaxLength(320).IsRequired();
+        builder.Property(registration => registration.PhoneNumber).HasMaxLength(50).IsRequired();
+        builder.Property(registration => registration.NormalizedPhoneNumber).HasMaxLength(50).IsRequired();
+        builder.Property(registration => registration.PasswordHash).HasMaxLength(1000).IsRequired();
+        builder.Property(registration => registration.OtpCodeHash).HasMaxLength(128).IsRequired();
+        builder.Property(registration => registration.Status).HasConversion<string>().HasMaxLength(50).IsRequired();
+        builder.HasOne<User>().WithMany().HasForeignKey(registration => registration.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Investor>().WithMany().HasForeignKey(registration => registration.InvestorId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(registration => registration.NormalizedEmail).IsUnique();
+        builder.HasIndex(registration => registration.NormalizedPhoneNumber).IsUnique();
+        builder.HasIndex(registration => new { registration.Status, registration.OtpExpiresAtUtc });
+        StatutoryLimitConfiguration.Audit(builder);
+    }
+}
+
 internal sealed class PortalSessionConfiguration : IEntityTypeConfiguration<PortalSession>
 {
     public void Configure(EntityTypeBuilder<PortalSession> builder)

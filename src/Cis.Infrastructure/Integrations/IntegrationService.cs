@@ -15,6 +15,7 @@ namespace Cis.Infrastructure.Integrations;
 internal sealed class IntegrationService : IIntegrationService, ISmsSender
 {
     private const string ModuleName = "Integrations";
+    private const string SystemNotificationActor = "system-notification";
     private const int RetryLimit = 3;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -173,7 +174,19 @@ internal sealed class IntegrationService : IIntegrationService, ISmsSender
 
     public async Task<IntegrationResultDto> SendAsync(string to, string body, CancellationToken cancellationToken = default)
     {
-        return await SendTestEmailAsync(new TestEmailRequest(to, "SMS stub", body, SimulateFailure: false, RetryableFailure: false), cancellationToken);
+        var actor = _currentUserContext.UserId ?? SystemNotificationActor;
+        var now = _dateTimeProvider.UtcNow;
+        var payload = Snapshot(new { To = to, Body = body });
+        var hash = Sha256(payload);
+        var message = IntegrationMessage.Create(IntegrationType.SMS, IntegrationDirection.Outbound, "SMS-STUB", to, hash, null, actor, now);
+        message.MarkDelivered(now);
+        var attempt = IntegrationDeliveryAttempt.Create(message.Id, 1, IntegrationDeliveryStatus.Succeeded, false, "SMS-STUB-OK", "SMS accepted by API stub adapter.", now, actor);
+        _dbContext.IntegrationMessages.Add(message);
+        _dbContext.IntegrationDeliveryAttempts.Add(attempt);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        var dto = new IntegrationResultDto(MapMessage(message), null, MapAttempt(attempt), null, null, null);
+        await WriteAuditAsync(AuditEventType.Created, "IntegrationSmsSent", "IntegrationMessage", message.Id.ToString(), null, Snapshot(dto), "SMS delivered through API stub adapter.", cancellationToken);
+        return dto;
     }
 
     public async Task<IntegrationResultDto> ExportAsync(ErpExportRequest request, CancellationToken cancellationToken = default)

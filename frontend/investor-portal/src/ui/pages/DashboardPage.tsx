@@ -1,16 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { Bell, FileClock, Landmark, Wallet } from 'lucide-react';
-import { getPortalActivity, getPortalHoldings, getPortalNotices } from '../../lib/portal-api';
+import { getPortalActivity, getPortalFundNav, getPortalNotices, getPortalPortfolio } from '../../lib/portal-api';
+import { formatDate, formatNumber, titleCase } from '../../lib/format';
 import { loadTrackedRequests } from '../../lib/request-tracker';
-import { formatDate, formatNumber, shortId, titleCase } from '../../lib/format';
 import { PageIntro } from '../components/PageIntro';
 import { StatCard } from '../components/StatCard';
 import { StatusBadge } from '../components/StatusBadge';
 
 export function DashboardPage() {
-  const holdingsQuery = useQuery({
-    queryKey: ['portal', 'holdings', 'dashboard'],
-    queryFn: () => getPortalHoldings({ pageNumber: 1, pageSize: 6 }),
+  const portfolioQuery = useQuery({
+    queryKey: ['portal', 'portfolio', 'dashboard'],
+    queryFn: getPortalPortfolio,
+  });
+  const fundNavQuery = useQuery({
+    queryKey: ['portal', 'fund-nav', 'dashboard'],
+    queryFn: () => getPortalFundNav({ pageNumber: 1, pageSize: 4, sortBy: 'PublishedAtUtc', sortDirection: 'desc' }),
   });
   const noticesQuery = useQuery({
     queryKey: ['portal', 'notices', 'dashboard'],
@@ -22,35 +26,34 @@ export function DashboardPage() {
   });
 
   const trackedRequests = loadTrackedRequests();
-  const holdings = holdingsQuery.data?.data ?? [];
-  const totalMarketValue = holdings.reduce((sum, holding) => sum + Number(holding.marketValue ?? 0), 0);
-  const totalRedeemableValue = holdings.reduce((sum, holding) => sum + Number(holding.redeemableAmount ?? 0), 0);
+  const portfolio = portfolioQuery.data;
 
   return (
     <div className="stack">
       <PageIntro
         eyebrow="My dashboard"
         title="Investor overview"
-        description="A quick view of your positions, recent digital requests, and portal activity."
+        description="A quick view of published fund prices, your portfolio position, pending requests, and recent activity."
       />
       <div className="stats-grid">
-        <StatCard caption="Latest published valuation by class" icon={Wallet} title="Portfolio value" value={formatNumber(totalMarketValue)} />
-        <StatCard caption="Based on redeemable units and latest price" icon={Landmark} title="Redeemable amount" value={formatNumber(totalRedeemableValue)} />
+        <StatCard caption="Latest published valuation by class" icon={Wallet} title="Portfolio value" value={formatNumber(portfolio?.totalMarketValue)} />
+        <StatCard caption="Based on redeemable units and latest price" icon={Landmark} title="Redeemable amount" value={formatNumber(portfolio?.totalRedeemableAmount)} />
         <StatCard caption="Tracked from this portal profile" icon={FileClock} title="Open requests" value={String(trackedRequests.filter((request) => request.status.toLowerCase().includes('pending')).length)} />
         <StatCard caption="Unseen or recent updates" icon={Bell} title="Notices" value={String(noticesQuery.data?.data.length ?? 0)} />
       </div>
       <section className="panel">
         <div className="panel__header">
-          <h2>Current holdings</h2>
-          <p>Available units, liens, and latest value snapshots across your active positions.</p>
+          <h2>Current portfolio</h2>
+          <p>Units, redeemable balance, and estimated capital gain across your active positions.</p>
         </div>
         <div className="mini-grid">
-          {holdings.map((holding) => (
+          {(portfolio?.positions ?? []).map((holding) => (
             <article className="mini-card" key={`${holding.schemeId}:${holding.schemeClassId}`}>
               <div className="mini-card__row">
-                <strong>{shortId(holding.schemeClassId)}</strong>
+                <strong>{holding.schemeClassName}</strong>
                 <StatusBadge value={holding.marketValue ? 'Valued' : 'Pending price'} />
               </div>
+              <p>{holding.schemeName}</p>
               <p>Available units: {formatNumber(holding.units, holding.unitPrecision)}</p>
               <p>Liened units: {formatNumber(holding.lienedUnits, holding.unitPrecision)}</p>
               <p>Redeemable amount: {formatNumber(holding.redeemableAmount)}</p>
@@ -78,22 +81,39 @@ export function DashboardPage() {
         </section>
         <section className="panel">
           <div className="panel__header">
-            <h2>Recent activity</h2>
-            <p>Portal views, downloads, and submissions recorded on your session.</p>
+            <h2>Latest fund NAVs</h2>
+            <p>Published fund pricing snapshots available for subscriptions, switches, and valuation checks.</p>
           </div>
           <div className="stack stack--compact">
-            {(activityQuery.data?.data ?? []).map((entry) => (
-              <article className="timeline-entry" key={entry.id}>
+            {(fundNavQuery.data?.data ?? []).map((fund) => (
+              <article className="timeline-entry" key={`${fund.schemeId}:${fund.schemeClassId}`}>
                 <div className="timeline-entry__header">
-                  <strong>{titleCase(entry.activityType)}</strong>
-                  <small>{formatDate(entry.occurredAtUtc)}</small>
+                  <strong>{fund.schemeName} / {fund.schemeClassName}</strong>
+                  <small>{formatDate(fund.publishedAtUtc)}</small>
                 </div>
-                <p>{entry.summary}</p>
+                <p>Unit price {formatNumber(fund.publishedUnitPrice)} - NAV {formatNumber(fund.publishedNav)}</p>
               </article>
             ))}
           </div>
         </section>
       </div>
+      <section className="panel">
+        <div className="panel__header">
+          <h2>Recent activity</h2>
+          <p>Portal views, downloads, and submissions recorded on your session.</p>
+        </div>
+        <div className="stack stack--compact">
+          {(activityQuery.data?.data ?? []).map((entry) => (
+            <article className="timeline-entry" key={entry.id}>
+              <div className="timeline-entry__header">
+                <strong>{titleCase(entry.activityType)}</strong>
+                <small>{formatDate(entry.occurredAtUtc)}</small>
+              </div>
+              <p>{entry.summary}</p>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

@@ -79,7 +79,11 @@ public sealed class CisApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
                 ["Security:RateLimiting:PublicAuthWindowSeconds"] = "60",
                 ["Security:RateLimiting:PublicEndpointPermitLimit"] = "1000",
                 ["Security:RateLimiting:PublicEndpointWindowSeconds"] = "60",
-                ["Security:Mfa:RequireForPrivilegedRoles"] = "false"
+                ["Security:Mfa:RequireForPrivilegedRoles"] = "false",
+                ["Portal:SelfRegistration:FixedOtpCode"] = "000000",
+                ["Portal:SelfRegistration:OtpLength"] = "6",
+                ["Portal:SelfRegistration:OtpExpiryMinutes"] = "10",
+                ["Portal:SelfRegistration:MaxFailedOtpAttempts"] = "5"
             });
         });
         builder.ConfigureServices(services =>

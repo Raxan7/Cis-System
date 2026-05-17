@@ -6,6 +6,13 @@ public enum PortalProfileStatus
     Suspended = 2
 }
 
+public enum PortalSelfRegistrationStatus
+{
+    PendingVerification = 1,
+    Activated = 2,
+    Expired = 3
+}
+
 public enum PortalSessionStatus
 {
     Active = 1,
@@ -17,8 +24,9 @@ public enum DigitalServiceRequestType
     SubscriptionRequest = 1,
     RedemptionRequest = 2,
     SwitchRequest = 3,
-    ProfileUpdateRequest = 4,
-    DocumentUploadRequest = 5
+    TransferRequest = 4,
+    ProfileUpdateRequest = 5,
+    DocumentUploadRequest = 6
 }
 
 public enum DigitalServiceRequestStatus
@@ -38,7 +46,10 @@ public enum PortalActivityType
     DownloadedTaxCertificate = 5,
     ViewedNotices = 6,
     SubmittedDigitalRequest = 7,
-    UploadedDocument = 8
+    UploadedDocument = 8,
+    ViewedFundNav = 9,
+    ViewedPortfolio = 10,
+    ViewedKycProfile = 11
 }
 
 public enum InvestorNoticeStatus

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { formatDateOnly, formatNumber, shortId } from '../../lib/format';
+import { formatDateOnly, formatNumber } from '../../lib/format';
 import { getPortalHoldings } from '../../lib/portal-api';
 import { PageIntro } from '../components/PageIntro';
 import { PaginatedTable } from '../components/PaginatedTable';
@@ -28,8 +28,9 @@ export function HoldingsPage() {
       />
       <PaginatedTable
         columns={[
-          { key: 'scheme', header: 'Scheme', render: (row) => shortId(row.schemeId) },
-          { key: 'class', header: 'Class', render: (row) => shortId(row.schemeClassId) },
+          { key: 'scheme', header: 'Scheme', render: (row) => <div><strong>{row.schemeName}</strong><div>{row.schemeCode}</div></div> },
+          { key: 'class', header: 'Class', render: (row) => <div><strong>{row.schemeClassName}</strong><div>{row.schemeClassCode}</div></div> },
+          { key: 'currency', header: 'Currency', render: (row) => row.currency },
           { key: 'units', header: 'Available units', render: (row) => formatNumber(row.units, row.unitPrecision) },
           { key: 'lienedUnits', header: 'Liened units', render: (row) => formatNumber(row.lienedUnits, row.unitPrecision) },
           { key: 'redeemableUnits', header: 'Redeemable units', render: (row) => formatNumber(row.redeemableUnits, row.unitPrecision) },

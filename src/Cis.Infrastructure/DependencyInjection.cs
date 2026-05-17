@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.Configure<SecurityRateLimitingOptions>(configuration.GetSection(SecurityRateLimitingOptions.SectionName));
         services.Configure<FileUploadSecurityOptions>(configuration.GetSection(FileUploadSecurityOptions.SectionName));
         services.Configure<MfaEnforcementOptions>(configuration.GetSection(MfaEnforcementOptions.SectionName));
+        services.Configure<PortalRegistrationOptions>(configuration.GetSection(PortalRegistrationOptions.SectionName));
         services.Configure<PerformanceExecutionOptions>(configuration.GetSection(PerformanceExecutionOptions.SectionName));
         services.AddMemoryCache();
         services.AddSingleton<BackgroundJobDispatcher>();

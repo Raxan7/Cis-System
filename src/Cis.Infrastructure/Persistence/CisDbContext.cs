@@ -348,6 +348,8 @@ public sealed class CisDbContext : DbContext
 
     public DbSet<PortalUserProfile> PortalUserProfiles => Set<PortalUserProfile>();
 
+    public DbSet<PortalSelfRegistration> PortalSelfRegistrations => Set<PortalSelfRegistration>();
+
     public DbSet<PortalSession> PortalSessions => Set<PortalSession>();
 
     public DbSet<PortalActivityLog> PortalActivityLogs => Set<PortalActivityLog>();

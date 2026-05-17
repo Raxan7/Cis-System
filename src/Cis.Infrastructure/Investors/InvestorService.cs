@@ -155,6 +155,17 @@ internal sealed class InvestorService : IInvestorService, IKycQueryService, IAml
                 var actor = CurrentUserIdOrThrow();
                 var now = _dateTimeProvider.UtcNow;
                 investor.UpdateContactSummary(request.DisplayName, request.Email, request.PhoneNumber, actor, now, request.Reason);
+                ApplyProfileUpdate(investor, request);
+                if (!string.IsNullOrWhiteSpace(request.TaxNumber))
+                {
+                    investor.SetTaxProfile(request.TaxNumber, request.CountryOfTaxResidence ?? "Kenya");
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.AddressLine1))
+                {
+                    investor.AddContact("Address", request.AddressLine1, true, actor, now);
+                }
+
                 if (!string.IsNullOrWhiteSpace(request.MandateType) || !string.IsNullOrWhiteSpace(request.SigningAuthority))
                 {
                     investor.AddMandate(
@@ -672,6 +683,42 @@ internal sealed class InvestorService : IInvestorService, IKycQueryService, IAml
                         request.ContactPersonName ?? string.Empty);
                     break;
             }
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                [exception.ParamName ?? "investor"] = [exception.Message]
+            });
+        }
+    }
+
+    private static void ApplyProfileUpdate(Investor investor, UpdateInvestorRequest request)
+    {
+        if (investor.InvestorType != InvestorType.Individual)
+        {
+            return;
+        }
+
+        var suppliedAny = !string.IsNullOrWhiteSpace(request.FirstName)
+            || !string.IsNullOrWhiteSpace(request.LastName)
+            || !string.IsNullOrWhiteSpace(request.IdentityNumber)
+            || request.DateOfBirth.HasValue
+            || !string.IsNullOrWhiteSpace(request.Nationality);
+
+        if (!suppliedAny)
+        {
+            return;
+        }
+
+        try
+        {
+            investor.AttachIndividualProfile(
+                request.FirstName ?? string.Empty,
+                request.LastName ?? string.Empty,
+                request.IdentityNumber ?? string.Empty,
+                request.DateOfBirth ?? throw new ArgumentException("dateOfBirth is required when updating an individual investor profile.", nameof(request.DateOfBirth)),
+                request.Nationality ?? string.Empty);
         }
         catch (ArgumentException exception)
         {

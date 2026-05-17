@@ -3,11 +3,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+import { formatNumber } from '../../lib/format';
 import { createPortalRedemptionRequest, getPortalHoldings } from '../../lib/portal-api';
 import { rememberTrackedRequest } from '../../lib/request-tracker';
-import { formatNumber } from '../../lib/format';
-import { PageIntro } from '../components/PageIntro';
 import { ErrorCallout } from '../components/ErrorCallout';
+import { PageIntro } from '../components/PageIntro';
 
 const schema = z.object({
   schemeId: z.string().uuid('Enter a valid scheme id.'),
@@ -87,7 +87,8 @@ export function RedemptionRequestPage() {
         <div className="mini-grid">
           {(holdingsQuery.data?.data ?? []).map((holding) => (
             <article className="mini-card" key={`${holding.schemeId}:${holding.schemeClassId}`}>
-              <strong>{holding.schemeClassId}</strong>
+              <strong>{holding.schemeName}</strong>
+              <p>{holding.schemeClassName}</p>
               <p>Redeemable units: {formatNumber(holding.redeemableUnits, holding.unitPrecision)}</p>
               <p>Redeemable amount: {formatNumber(holding.redeemableAmount)}</p>
             </article>
@@ -118,17 +119,18 @@ export function RedemptionRequestPage() {
             <select
               defaultValue=""
               onChange={(event) => {
-                const [schemeId, schemeClassId] = event.target.value.split('|');
-                if (schemeId && schemeClassId) {
+                const [schemeId, schemeClassId, currency] = event.target.value.split('|');
+                if (schemeId && schemeClassId && currency) {
                   form.setValue('schemeId', schemeId, { shouldValidate: true });
                   form.setValue('schemeClassId', schemeClassId, { shouldValidate: true });
+                  form.setValue('currency', currency, { shouldValidate: true });
                 }
               }}
             >
               <option value="">Select a holding</option>
               {(holdingsQuery.data?.data ?? []).map((holding) => (
-                <option key={`${holding.schemeId}:${holding.schemeClassId}`} value={`${holding.schemeId}|${holding.schemeClassId}`}>
-                  {holding.schemeClassId} · {formatNumber(holding.redeemableUnits, holding.unitPrecision)} redeemable units
+                <option key={`${holding.schemeId}:${holding.schemeClassId}`} value={`${holding.schemeId}|${holding.schemeClassId}|${holding.currency}`}>
+                  {holding.schemeName} / {holding.schemeClassName} - {formatNumber(holding.redeemableUnits, holding.unitPrecision)} redeemable units
                 </option>
               ))}
             </select>

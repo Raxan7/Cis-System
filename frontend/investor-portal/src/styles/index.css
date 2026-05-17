@@ -192,6 +192,16 @@ a {
   gap: 0.9rem;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.detail-grid strong {
+  display: block;
+}
+
 .panel,
 .stat-card,
 .login-panel,

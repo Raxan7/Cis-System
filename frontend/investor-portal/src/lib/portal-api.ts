@@ -19,6 +19,38 @@ export type PaginatedResult<T> = {
   pagination: PaginationMeta | null;
 };
 
+export type CreatePortalSelfRegistrationRequest = {
+  displayName: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+};
+
+export type VerifyPortalSelfRegistrationOtpRequest = {
+  registrationId: string;
+  otpCode: string;
+};
+
+export type PortalSelfRegistrationInitiatedDto = {
+  registrationId: string;
+  displayName: string;
+  email: string;
+  maskedPhoneNumber: string;
+  status: string;
+  otpSentAtUtc: string;
+  otpExpiresAtUtc: string;
+};
+
+export type PortalSelfRegistrationActivationDto = {
+  registrationId: string;
+  userId: string;
+  investorId: string;
+  investorNumber: string;
+  investorStatus: string;
+  portalProfileStatus: string;
+  email: string;
+};
+
 export type PortalProfileDto = {
   userId: string;
   investorId: string;
@@ -31,9 +63,31 @@ export type PortalProfileDto = {
   mfaSatisfied: boolean;
 };
 
+export type PortalFundNavDto = {
+  schemeId: string;
+  schemeCode: string;
+  schemeName: string;
+  schemeClassId: string;
+  schemeClassCode: string;
+  schemeClassName: string;
+  currency: string;
+  schemeStatus: string;
+  publishedNav: number;
+  publishedUnitPrice: number;
+  valuationDate: string;
+  publishedAtUtc: string;
+  valuationFrequency: string;
+  dealingFrequency: string;
+};
+
 export type PortalHoldingDto = {
   schemeId: string;
+  schemeCode: string;
+  schemeName: string;
   schemeClassId: string;
+  schemeClassCode: string;
+  schemeClassName: string;
+  currency: string;
   units: number;
   lienedUnits: number;
   redeemableUnits: number;
@@ -44,6 +98,39 @@ export type PortalHoldingDto = {
   latestValuationDate?: string | null;
   lastMovementDate?: string | null;
   lastTransactionReference?: string | null;
+};
+
+export type PortalPortfolioPositionDto = {
+  schemeId: string;
+  schemeCode: string;
+  schemeName: string;
+  schemeClassId: string;
+  schemeClassCode: string;
+  schemeClassName: string;
+  currency: string;
+  units: number;
+  lienedUnits: number;
+  redeemableUnits: number;
+  unitPrice?: number | null;
+  marketValue?: number | null;
+  redeemableAmount?: number | null;
+  unitPrecision: number;
+  latestValuationDate?: string | null;
+};
+
+export type PortalPortfolioSummaryDto = {
+  investorId: string;
+  investorNumber: string;
+  investorStatus: string;
+  totalUnits: number;
+  totalLienedUnits: number;
+  totalRedeemableUnits: number;
+  totalMarketValue: number;
+  totalRedeemableAmount: number;
+  totalNetContribution: number;
+  estimatedCapitalGain: number;
+  latestValuationDate?: string | null;
+  positions: PortalPortfolioPositionDto[];
 };
 
 export type PortalTransactionDto = {
@@ -75,6 +162,61 @@ export type PortalTaxCertificateDto = {
   countryOfTaxResidence: string;
   certificateDate: string;
   certificateReference: string;
+};
+
+export type PortalInvestorBankAccountDto = {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  currency: string;
+  swiftCode?: string | null;
+  isActive: boolean;
+  highRiskFlag: boolean;
+};
+
+export type PortalKycRequirementStatusDto = {
+  id: string;
+  documentType: string;
+  isMandatory: boolean;
+  status: string;
+  satisfiedByDocumentId?: string | null;
+};
+
+export type PortalKycDocumentStatusDto = {
+  id: string;
+  documentType: string;
+  fileName: string;
+  expiryDate?: string | null;
+  status: string;
+  uploadedAtUtc: string;
+};
+
+export type PortalKycProfileDto = {
+  investorId: string;
+  investorNumber: string;
+  investorStatus: string;
+  investorType: string;
+  displayName: string;
+  email: string;
+  phoneNumber: string;
+  identityNumber?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  taxNumber?: string | null;
+  countryOfTaxResidence?: string | null;
+  addressLine1?: string | null;
+  alternatePhoneNumber?: string | null;
+  nextOfKinName?: string | null;
+  nextOfKinPhoneNumber?: string | null;
+  nextOfKinRelationship?: string | null;
+  canRedeem: boolean;
+  redemptionBlockedReason?: string | null;
+  bankAccounts: PortalInvestorBankAccountDto[];
+  kycRequirements: PortalKycRequirementStatusDto[];
+  kycDocuments: PortalKycDocumentStatusDto[];
 };
 
 export type InvestorNoticeDto = {
@@ -131,10 +273,35 @@ export type CreatePortalSwitchRequest = {
   feeAmount: number;
 };
 
+export type CreatePortalTransferRequest = {
+  schemeId: string;
+  schemeClassId: string;
+  targetInvestorNumber: string;
+  units: number;
+  reason: string;
+};
+
 export type CreatePortalProfileUpdateRequest = {
   displayName: string;
   email: string;
   phoneNumber: string;
+  identityNumber?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  taxNumber?: string | null;
+  countryOfTaxResidence?: string | null;
+  addressLine1?: string | null;
+  alternatePhoneNumber?: string | null;
+  nextOfKinName?: string | null;
+  nextOfKinPhoneNumber?: string | null;
+  nextOfKinRelationship?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountName?: string | null;
+  bankCurrency?: string | null;
+  bankSwiftCode?: string | null;
   reason: string;
 };
 
@@ -165,6 +332,26 @@ async function getPaged<T>(path: string, query: PaginationQuery) {
 
 export function getPortalProfile() {
   return request<PortalProfileDto>('/api/portal/me');
+}
+
+export function getPortalFundNav(query: PaginationQuery) {
+  return getPaged<PortalFundNavDto>('/api/portal/fund-nav', query);
+}
+
+export function getPortalPortfolio() {
+  return request<PortalPortfolioSummaryDto>('/api/portal/portfolio');
+}
+
+export function getPortalKycProfile() {
+  return request<PortalKycProfileDto>('/api/portal/kyc');
+}
+
+export function createPortalSelfRegistration(body: CreatePortalSelfRegistrationRequest) {
+  return request<PortalSelfRegistrationInitiatedDto>('/api/portal/self-registration', { method: 'POST', body }, false);
+}
+
+export function verifyPortalSelfRegistrationOtp(body: VerifyPortalSelfRegistrationOtpRequest) {
+  return request<PortalSelfRegistrationActivationDto>('/api/portal/self-registration/verify-otp', { method: 'POST', body }, false);
 }
 
 export function getPortalHoldings(query: PaginationQuery) {
@@ -201,6 +388,10 @@ export function createPortalRedemptionRequest(body: CreatePortalRedemptionReques
 
 export function createPortalSwitchRequest(body: CreatePortalSwitchRequest) {
   return request<DigitalServiceRequestDto>('/api/portal/requests/switch', { method: 'POST', body });
+}
+
+export function createPortalTransferRequest(body: CreatePortalTransferRequest) {
+  return request<DigitalServiceRequestDto>('/api/portal/requests/transfer', { method: 'POST', body });
 }
 
 export function createPortalProfileUpdateRequest(body: CreatePortalProfileUpdateRequest) {

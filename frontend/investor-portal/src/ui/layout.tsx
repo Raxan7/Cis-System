@@ -7,9 +7,13 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  PackageOpen,
+  PiggyBank,
   Receipt,
   RefreshCcw,
   ShieldCheck,
+  ShieldUser,
+  Shuffle,
   Upload,
   Wallet,
 } from 'lucide-react';
@@ -20,21 +24,45 @@ import { useAuth } from './auth';
 import { ErrorCallout } from './components/ErrorCallout';
 import { StatusBadge } from './components/StatusBadge';
 
-const navigation = [
+type NavigationItem = {
+  title: string;
+  route: string;
+  icon: typeof LayoutDashboard;
+  permission: string;
+};
+
+const navigation: NavigationItem[] = [
   { title: 'Dashboard', route: '/', icon: LayoutDashboard, permission: portalPermissions.read },
+  { title: 'Fund NAV', route: '/fund-nav', icon: PiggyBank, permission: portalPermissions.read },
+  { title: 'Portfolio', route: '/portfolio', icon: PackageOpen, permission: portalPermissions.read },
   { title: 'Holdings', route: '/holdings', icon: Wallet, permission: portalPermissions.read },
   { title: 'Transactions', route: '/transactions', icon: History, permission: portalPermissions.read },
   { title: 'Statements', route: '/statements', icon: FileText, permission: portalPermissions.read },
   { title: 'Tax certificates', route: '/tax-certificates', icon: Receipt, permission: portalPermissions.read },
   { title: 'Notices', route: '/notices', icon: Bell, permission: portalPermissions.read },
+  { title: 'KYC profile', route: '/kyc', icon: ShieldUser, permission: portalPermissions.read },
   { title: 'Request status', route: '/requests', icon: RefreshCcw, permission: portalPermissions.read },
-  { title: 'Subscription', route: '/requests/subscription', icon: FileChartColumn, permission: portalPermissions.requestsCreate },
-  { title: 'Redemption', route: '/requests/redemption', icon: FileChartColumn, permission: portalPermissions.requestsCreate },
+  { title: 'Buy / Deposit', route: '/requests/subscription', icon: FileChartColumn, permission: portalPermissions.requestsCreate },
+  { title: 'Withdraw', route: '/requests/redemption', icon: FileChartColumn, permission: portalPermissions.requestsCreate },
   { title: 'Switch', route: '/requests/switch', icon: FileChartColumn, permission: portalPermissions.requestsCreate },
+  { title: 'Transfer', route: '/requests/transfer', icon: Shuffle, permission: portalPermissions.requestsCreate },
   { title: 'Profile update', route: '/requests/profile-update', icon: CircleUserRound, permission: portalPermissions.requestsCreate },
   { title: 'Documents', route: '/documents', icon: Upload, permission: portalPermissions.documentsUpload },
   { title: 'Activity', route: '/activity', icon: ShieldCheck, permission: portalPermissions.read },
 ];
+
+const mobileNavigationRoutes = ['/', '/fund-nav', '/portfolio', '/kyc', '/requests'] as const;
+
+function findCurrentNavigation(items: NavigationItem[], pathname: string) {
+  const exactMatch = items.find((item) => item.route === pathname);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return items
+    .filter((item) => item.route !== '/' && pathname.startsWith(item.route))
+    .sort((left, right) => right.route.length - left.route.length)[0];
+}
 
 export function AppLayout() {
   const { session, logout } = useAuth();
@@ -45,6 +73,9 @@ export function AppLayout() {
   });
 
   const visibleNavigation = navigation.filter((item) => hasPermission(session?.user.permissions ?? [], item.permission));
+  const mobileNavigation = visibleNavigation.filter((item) =>
+    mobileNavigationRoutes.includes(item.route as (typeof mobileNavigationRoutes)[number]));
+  const currentNavigation = findCurrentNavigation(visibleNavigation, location.pathname);
 
   return (
     <div className="portal-shell">
@@ -60,7 +91,7 @@ export function AppLayout() {
           {visibleNavigation.map((item) => {
             const Icon = item.icon;
             return (
-              <NavLink className={({ isActive }) => `portal-nav__link${isActive ? ' active' : ''}`} key={item.route} to={item.route}>
+              <NavLink className={({ isActive }) => `portal-nav__link${isActive ? ' active' : ''}`} end={item.route === '/'} key={item.route} to={item.route}>
                 <Icon size={16} />
                 <span>{item.title}</span>
               </NavLink>
@@ -71,8 +102,8 @@ export function AppLayout() {
       <div className="portal-main">
         <header className="portal-topbar">
           <div>
-            <h2>{visibleNavigation.find((item) => item.route === location.pathname)?.title ?? 'Investor Portal'}</h2>
-            <p>{session?.user.displayName} · {session?.user.email}</p>
+            <h2>{currentNavigation?.title ?? 'Investor Portal'}</h2>
+            <p>{session?.user.displayName} - {session?.user.email}</p>
           </div>
           <button className="button button--ghost" onClick={() => void logout()} type="button">
             <LogOut size={16} />
@@ -117,6 +148,19 @@ export function AppLayout() {
             </>
           ) : null}
         </main>
+        {mobileNavigation.length > 0 ? (
+          <nav className="portal-bottom-nav">
+            {mobileNavigation.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink className={({ isActive }) => `portal-bottom-nav__link${isActive ? ' active' : ''}`} end={item.route === '/'} key={item.route} to={item.route}>
+                  <Icon size={18} />
+                  <span>{item.title}</span>
+                </NavLink>
+              );
+            })}
+          </nav>
+        ) : null}
       </div>
     </div>
   );

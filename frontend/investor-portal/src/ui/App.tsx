@@ -7,9 +7,12 @@ import { AppLayout } from './layout';
 import { ActivityLogPage } from './pages/ActivityLogPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentUploadPage } from './pages/DocumentUploadPage';
+import { FundNavPage } from './pages/FundNavPage';
 import { HoldingsPage } from './pages/HoldingsPage';
+import { KycProfilePage } from './pages/KycProfilePage';
 import { LoginPage } from './pages/LoginPage';
 import { NoticesPage } from './pages/NoticesPage';
+import { PortfolioPage } from './pages/PortfolioPage';
 import { ProfileUpdateRequestPage } from './pages/ProfileUpdateRequestPage';
 import { RedemptionRequestPage } from './pages/RedemptionRequestPage';
 import { RequestStatusPage } from './pages/RequestStatusPage';
@@ -17,6 +20,7 @@ import { StatementsPage } from './pages/StatementsPage';
 import { SubscriptionRequestPage } from './pages/SubscriptionRequestPage';
 import { SwitchRequestPage } from './pages/SwitchRequestPage';
 import { TaxCertificatesPage } from './pages/TaxCertificatesPage';
+import { TransferRequestPage } from './pages/TransferRequestPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 
 function ProtectedLayout() {
@@ -53,15 +57,19 @@ export function App() {
       <Route element={session ? <Navigate replace to="/" /> : <LoginPage />} path="/login" />
       <Route element={<ProtectedLayout />}>
         <Route element={<DashboardPage />} path="/" />
+        <Route element={<PermissionRoute element={<FundNavPage />} permission={portalPermissions.read} />} path="/fund-nav" />
+        <Route element={<PermissionRoute element={<PortfolioPage />} permission={portalPermissions.read} />} path="/portfolio" />
         <Route element={<PermissionRoute element={<HoldingsPage />} permission={portalPermissions.read} />} path="/holdings" />
         <Route element={<PermissionRoute element={<TransactionsPage />} permission={portalPermissions.read} />} path="/transactions" />
         <Route element={<PermissionRoute element={<StatementsPage />} permission={portalPermissions.read} />} path="/statements" />
         <Route element={<PermissionRoute element={<TaxCertificatesPage />} permission={portalPermissions.read} />} path="/tax-certificates" />
         <Route element={<PermissionRoute element={<NoticesPage />} permission={portalPermissions.read} />} path="/notices" />
+        <Route element={<PermissionRoute element={<KycProfilePage />} permission={portalPermissions.read} />} path="/kyc" />
         <Route element={<PermissionRoute element={<RequestStatusPage />} permission={portalPermissions.read} />} path="/requests" />
         <Route element={<PermissionRoute element={<SubscriptionRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/subscription" />
         <Route element={<PermissionRoute element={<RedemptionRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/redemption" />
         <Route element={<PermissionRoute element={<SwitchRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/switch" />
+        <Route element={<PermissionRoute element={<TransferRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/transfer" />
         <Route element={<PermissionRoute element={<ProfileUpdateRequestPage />} permission={portalPermissions.requestsCreate} />} path="/requests/profile-update" />
         <Route element={<PermissionRoute element={<DocumentUploadPage />} permission={portalPermissions.documentsUpload} />} path="/documents" />
         <Route element={<PermissionRoute element={<ActivityLogPage />} permission={portalPermissions.read} />} path="/activity" />
