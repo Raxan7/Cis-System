@@ -65,6 +65,7 @@ export function App() {
   return (
     <Routes>
       <Route element={session ? <Navigate replace to="/" /> : <LoginPage />} path="/login" />
+      <Route element={session ? <Navigate replace to="/" /> : <LoginPage />} path="/register" />
       <Route element={<ProtectedLayout />}>
         {/* Existing Routes */}
         <Route element={<DashboardPage />} path="/" />

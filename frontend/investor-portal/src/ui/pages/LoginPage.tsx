@@ -1,7 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import { z } from 'zod';
 import { useAuth } from '../auth';
 import { ErrorCallout } from '../components/ErrorCallout';
@@ -37,7 +38,16 @@ export function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const nextPath = (location.state as { from?: string } | null)?.from ?? '/';
-  const [mode, setMode] = useState<'login' | 'register' | 'verify'>('login');
+  const initialMode = (location.pathname === '/register' || new URLSearchParams(location.search).get('mode') === 'register')
+    ? 'register'
+    : 'login';
+  const [mode, setMode] = useState<'login' | 'register' | 'verify'>(initialMode);
+
+  useEffect(() => {
+    const shouldBeRegister = (location.pathname === '/register' || new URLSearchParams(location.search).get('mode') === 'register');
+    if (shouldBeRegister && mode !== 'register') setMode('register');
+    if (!shouldBeRegister && mode === 'register' && location.pathname === '/login') setMode('login');
+  }, [location.pathname, location.search]);
   const [pendingRegistration, setPendingRegistration] = useState<{
     registration: PortalSelfRegistrationInitiatedDto;
     email: string;
@@ -120,6 +130,9 @@ export function LoginPage() {
               <button className="button button--primary button--full" disabled={loginForm.formState.isSubmitting} type="submit">
                 {loginForm.formState.isSubmitting ? 'Signing in...' : 'Sign in'}
               </button>
+              <div className="login-help">
+                <small>Don't have an account? <Link to="/register">Create an account</Link></small>
+              </div>
             </form>
           </>
         ) : null}
